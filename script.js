@@ -1,6 +1,9 @@
 (() => {
   const SESSION_KEY = 'metrix_ai_01_session_v1';
   const CHATS_KEY = 'metrix_ai_01_chats_by_unit_v1';
+  const USAGE_KEY = 'metrix_ai_01_usage_v1';
+  const FREE_QUESTION_LIMIT = 10;
+  const PASS_DURATION_MS = 24 * 60 * 60 * 1000;
 
   // Auth & Unit Gate Elements
   const authScreen = document.getElementById('authScreen');
@@ -16,7 +19,6 @@
   const signedInEmailLabel = document.getElementById('signedInEmailLabel');
   const signOutBtn = document.getElementById('signOutBtn');
   const unitsGrid = document.getElementById('unitsGrid');
-  const otherUnitBtn = document.getElementById('otherUnitBtn');
   const customUnitBox = document.getElementById('customUnitBox');
   const customUnitInput = document.getElementById('customUnitInput');
   const confirmCustomUnitBtn = document.getElementById('confirmCustomUnitBtn');
@@ -39,16 +41,27 @@
   const messageInput = document.getElementById('messageInput');
   const sendBtn = document.getElementById('sendBtn');
 
+  // Payment Modal Elements
+  const paymentModal = document.getElementById('paymentModal');
+  const closePaymentModalBtn = document.getElementById('closePaymentModalBtn');
+  const paymentForm = document.getElementById('paymentForm');
+  const mpesaPhoneInput = document.getElementById('mpesaPhoneInput');
+  const payNowBtn = document.getElementById('payNowBtn');
+  const verifyPaymentBtn = document.getElementById('verifyPaymentBtn');
+  const paymentStatusMsg = document.getElementById('paymentStatusMsg');
+
   // Application State
-  let session = loadSession(); // { email, passwordHash, selectedUnit }
+  let session = loadSession(); // { email, passwordSet, selectedUnit }
   let chatsByUnit = loadChatsByUnit();
+  let usageMap = loadUsageMap(); // { [email]: { questionsUsed, passExpiresAt, lastCheckoutId } }
   let currentChatId = null;
   let isGenerating = false;
+  let pendingPromptText = null;
 
   // Boot Flow
   syncViewState();
 
-  // --- Session & Storage Helpers ---
+  // --- Session, Chat & Usage Storage Helpers ---
   function loadSession() {
     try {
       const raw = localStorage.getItem(SESSION_KEY);
@@ -86,6 +99,61 @@
     } catch (err) {
       console.error('Failed to save chats:', err);
     }
+  }
+
+  function loadUsageMap() {
+    try {
+      const raw = localStorage.getItem(USAGE_KEY);
+      const parsed = raw ? JSON.parse(raw) : {};
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+
+  function saveUsageMap() {
+    try {
+      localStorage.setItem(USAGE_KEY, JSON.stringify(usageMap));
+    } catch (err) {
+      console.error('Failed to save usage data:', err);
+    }
+  }
+
+  function getUserUsage() {
+    const emailKey = (session?.email || 'guest').toLowerCase();
+    if (!usageMap[emailKey]) {
+      usageMap[emailKey] = {
+        questionsUsed: 0,
+        passExpiresAt: 0,
+        lastCheckoutId: '',
+      };
+    }
+    return usageMap[emailKey];
+  }
+
+  function hasActive24hPass() {
+    const usage = getUserUsage();
+    return typeof usage.passExpiresAt === 'number' && usage.passExpiresAt > Date.now();
+  }
+
+  function canAskQuestion() {
+    if (hasActive24hPass()) return true;
+    const usage = getUserUsage();
+    return (usage.questionsUsed || 0) < FREE_QUESTION_LIMIT;
+  }
+
+  function recordQuestionSent() {
+    if (hasActive24hPass()) return;
+    const usage = getUserUsage();
+    usage.questionsUsed = (usage.questionsUsed || 0) + 1;
+    saveUsageMap();
+  }
+
+  function activate24hPass(checkoutId = '') {
+    const usage = getUserUsage();
+    usage.passExpiresAt = Date.now() + PASS_DURATION_MS;
+    if (checkoutId) usage.lastCheckoutId = checkoutId;
+    saveUsageMap();
   }
 
   function getUnitChats() {
@@ -210,6 +278,8 @@
     if (isGenerating) return;
     session = null;
     currentChatId = null;
+    pendingPromptText = null;
+    closePaymentModal();
     saveSession();
     closeMobileSidebar();
     studentEmailInput.value = '';
@@ -217,6 +287,135 @@
     updatePasswordMeter();
     clearAuthError();
     syncViewState();
+  }
+
+  // --- Payment Modal Helpers (10 KES for 24h Access) ---
+  function openPaymentModal(queuedPrompt = null) {
+    if (queuedPrompt) {
+      pendingPromptText = queuedPrompt;
+    }
+    setPaymentStatus('', '');
+    paymentModal.classList.remove('hidden');
+    mpesaPhoneInput.focus();
+  }
+
+  function closePaymentModal() {
+    paymentModal.classList.add('hidden');
+  }
+
+  function setPaymentStatus(message, type = '') {
+    if (!message) {
+      paymentStatusMsg.textContent = '';
+      paymentStatusMsg.className = 'payment-status-msg hidden';
+      return;
+    }
+    paymentStatusMsg.textContent = message;
+    paymentStatusMsg.className = `payment-status-msg ${type}`.trim();
+  }
+
+  function normalizeKenyanPhone(rawPhone) {
+    const digits = String(rawPhone || '').replace(/\D/g, '');
+    if (/^254[17]\d{8}$/.test(digits)) return digits;
+    if (/^0[17]\d{8}$/.test(digits)) return '254' + digits.slice(1);
+    if (/^[17]\d{8}$/.test(digits)) return '254' + digits;
+    return null;
+  }
+
+  async function initiateTenBobPayment(e) {
+    e.preventDefault();
+    const normalizedPhone = normalizeKenyanPhone(mpesaPhoneInput.value);
+    if (!normalizedPhone) {
+      setPaymentStatus('Enter a valid Kenyan M-Pesa number (e.g., 07XXXXXXXX or 2547XXXXXXXX).', 'error');
+      mpesaPhoneInput.focus();
+      return;
+    }
+
+    payNowBtn.disabled = true;
+    verifyPaymentBtn.disabled = true;
+    setPaymentStatus('Sending 10 KES M-Pesa prompt to your phone...', '');
+
+    try {
+      const response = await fetch('/api/pay', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone: normalizedPhone,
+          amount: 10,
+          email: session?.email || '',
+          selectedUnit: session?.selectedUnit || '',
+        }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setPaymentStatus(
+          data.error || 'Could not initiate the 10 KES payment prompt. Please try again.',
+          'error'
+        );
+      } else {
+        if (data.checkoutRequestId) {
+          const usage = getUserUsage();
+          usage.lastCheckoutId = data.checkoutRequestId;
+          saveUsageMap();
+        }
+        setPaymentStatus(
+          data.message || 'Check your phone for the 10 KES M-Pesa PIN prompt, enter your PIN, then click "I Have Paid — Verify Payment".',
+          'success'
+        );
+      }
+    } catch {
+      setPaymentStatus('Network error while starting payment. Check your connection and try again.', 'error');
+    } finally {
+      payNowBtn.disabled = false;
+      verifyPaymentBtn.disabled = false;
+    }
+  }
+
+  async function verifyTenBobPayment() {
+    const usage = getUserUsage();
+    const normalizedPhone = normalizeKenyanPhone(mpesaPhoneInput.value);
+
+    payNowBtn.disabled = true;
+    verifyPaymentBtn.disabled = true;
+    setPaymentStatus('Verifying your 10 KES payment for 24-hour access...', '');
+
+    try {
+      const response = await fetch('/api/verify-payment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: session?.email || '',
+          phone: normalizedPhone || '',
+          checkoutRequestId: usage.lastCheckoutId || '',
+        }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+      if (response.ok && data.paid) {
+        activate24hPass(data.checkoutRequestId || usage.lastCheckoutId || '');
+        setPaymentStatus('Payment verified! Your 24-hour access is now active.', 'success');
+
+        const promptToResume = pendingPromptText;
+        pendingPromptText = null;
+
+        setTimeout(() => {
+          closePaymentModal();
+          if (promptToResume) {
+            handleSendMessage(promptToResume);
+          }
+        }, 650);
+      } else {
+        setPaymentStatus(
+          data.error || 'Payment not confirmed yet. Complete the 10 KES prompt on your phone and try again.',
+          'error'
+        );
+      }
+    } catch {
+      setPaymentStatus('Network error while verifying payment. Please try again.', 'error');
+    } finally {
+      payNowBtn.disabled = false;
+      verifyPaymentBtn.disabled = false;
+    }
   }
 
   // --- Time Formatting ---
@@ -735,6 +934,12 @@
     const text = (overrideText !== null ? overrideText : messageInput.value).trim();
     if (!text) return;
 
+    // Enforce 10 free questions unless student has an active 24-hour pass
+    if (!canAskQuestion()) {
+      openPaymentModal(text);
+      return;
+    }
+
     let chat = getCurrentChat();
     const unitChats = getUnitChats();
     if (!chat) {
@@ -758,6 +963,7 @@
       time: formatTime(),
     };
     chat.messages.push(userMsg);
+    recordQuestionSent();
     saveChatsByUnit();
 
     messageInput.value = '';
@@ -931,6 +1137,13 @@
 
   signOutBtn.addEventListener('click', signOutUser);
   sidebarSignOutBtn.addEventListener('click', signOutUser);
+
+  closePaymentModalBtn.addEventListener('click', closePaymentModal);
+  paymentModal.addEventListener('click', (e) => {
+    if (e.target === paymentModal) closePaymentModal();
+  });
+  paymentForm.addEventListener('submit', initiateTenBobPayment);
+  verifyPaymentBtn.addEventListener('click', verifyTenBobPayment);
 
   messageInput.addEventListener('input', () => {
     autoResizeInput();
