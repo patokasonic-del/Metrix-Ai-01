@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Metrix AI 01 — Engineering, Coding & Academic Assistant</title>
+  <title>Metrix AI 01 — Student Portal & Study Assistant</title>
   <!-- Google Fonts: Inter & JetBrains Mono -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -22,18 +22,19 @@
       /* Icy / Frost Surface Palette */
       --bg-main: #f0f6fc;
       --bg-gradient: radial-gradient(circle at top right, #e0f2fe 0%, #f0f6fc 45%, #eef2ff 100%);
-      --bg-sidebar: rgba(248, 251, 255, 0.88);
-      --bg-card: rgba(255, 255, 255, 0.86);
+      --bg-sidebar: rgba(248, 251, 255, 0.9);
+      --bg-card: rgba(255, 255, 255, 0.88);
       --bg-card-hover: #ffffff;
       --bg-topbar: rgba(240, 246, 252, 0.88);
       --bg-user-bubble: linear-gradient(135deg, #2563eb 0%, #4f46e5 100%);
       --bg-input: rgba(255, 255, 255, 0.96);
 
       /* Borders & Shadows */
-      --border-frost: rgba(148, 163, 184, 0.24);
+      --border-frost: rgba(148, 163, 184, 0.25);
       --border-accent: rgba(6, 182, 212, 0.45);
       --shadow-sm: 0 2px 8px rgba(15, 23, 42, 0.04);
       --shadow-md: 0 8px 24px rgba(37, 99, 235, 0.08);
+      --shadow-lg: 0 18px 44px rgba(15, 23, 42, 0.1);
       --shadow-glow: 0 4px 16px rgba(6, 182, 212, 0.28);
 
       /* Typography Colors */
@@ -69,6 +70,317 @@
       color: var(--text-primary);
       overflow: hidden;
       -webkit-font-smoothing: antialiased;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    /* Avatar Component + Fallback */
+    .avatar-wrapper {
+      position: relative;
+      border-radius: 50%;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--accent-gradient);
+      color: #ffffff;
+      font-weight: 800;
+      flex-shrink: 0;
+      box-shadow: 0 0 0 2px #ffffff, 0 0 14px var(--accent-glow);
+    }
+
+    .avatar-wrapper img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .avatar-fallback {
+      width: 100%;
+      height: 100%;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      background: var(--accent-gradient);
+      color: #ffffff;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+
+    .avatar-wrapper.img-failed img {
+      display: none;
+    }
+
+    .avatar-wrapper.img-failed .avatar-fallback {
+      display: flex;
+    }
+
+    /* Auth & Unit Gate Screen */
+    .gate-screen {
+      height: 100dvh;
+      width: 100%;
+      overflow-y: auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 16px;
+    }
+
+    .gate-card {
+      width: 100%;
+      max-width: 560px;
+      background: var(--bg-card);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      border: 1px solid var(--border-frost);
+      border-radius: 24px;
+      padding: 28px 26px;
+      box-shadow: var(--shadow-lg);
+      animation: fadeIn 0.3s ease;
+    }
+
+    .gate-header {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      margin-bottom: 22px;
+    }
+
+    .gate-avatar {
+      width: 74px;
+      height: 74px;
+      font-size: 1.9rem;
+      margin-bottom: 14px;
+    }
+
+    .gate-title {
+      font-size: 1.55rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      margin-bottom: 6px;
+    }
+
+    .gate-title span {
+      background: var(--accent-gradient);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .gate-subtitle {
+      font-size: 0.9rem;
+      color: var(--text-secondary);
+      line-height: 1.5;
+    }
+
+    .form-group {
+      margin-bottom: 16px;
+    }
+
+    .form-label {
+      display: block;
+      font-size: 0.84rem;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 6px;
+    }
+
+    .input-control-wrap {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+
+    .form-input {
+      width: 100%;
+      padding: 12px 42px 12px 14px;
+      border-radius: 12px;
+      border: 1.5px solid var(--border-frost);
+      background: #ffffff;
+      font-family: inherit;
+      font-size: 0.94rem;
+      color: var(--text-primary);
+      outline: none;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .form-input:focus {
+      border-color: var(--accent-cyan);
+      box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.15);
+    }
+
+    .toggle-pass-btn {
+      position: absolute;
+      right: 10px;
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 6px;
+      font-size: 0.92rem;
+    }
+
+    .toggle-pass-btn:hover {
+      color: var(--accent-blue);
+    }
+
+    .strength-meter {
+      height: 6px;
+      width: 100%;
+      background: #e2e8f0;
+      border-radius: 999px;
+      overflow: hidden;
+      margin-top: 8px;
+    }
+
+    .strength-bar {
+      height: 100%;
+      width: 0%;
+      transition: width 0.25s ease, background-color 0.25s ease;
+      border-radius: 999px;
+    }
+
+    .strength-text {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      margin-top: 6px;
+    }
+
+    .auth-error {
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.35);
+      color: #b91c1c;
+      padding: 10px 12px;
+      border-radius: 10px;
+      font-size: 0.84rem;
+      margin-bottom: 14px;
+    }
+
+    .primary-btn {
+      width: 100%;
+      padding: 13px 18px;
+      border: none;
+      border-radius: 12px;
+      background: var(--accent-gradient);
+      color: #ffffff;
+      font-family: inherit;
+      font-size: 0.95rem;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: var(--shadow-glow);
+      transition: transform 0.15s ease, box-shadow 0.2s ease;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .primary-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 8px 22px rgba(37, 99, 235, 0.32);
+    }
+
+    /* Six Unit Selection Buttons */
+    .student-banner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      background: rgba(6, 182, 212, 0.08);
+      border: 1px solid rgba(6, 182, 212, 0.25);
+      border-radius: 12px;
+      padding: 10px 14px;
+      margin-bottom: 18px;
+      font-size: 0.84rem;
+      color: var(--text-secondary);
+    }
+
+    .student-email-badge {
+      font-weight: 600;
+      color: var(--text-primary);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .link-btn {
+      background: transparent;
+      border: none;
+      color: var(--accent-blue);
+      font-family: inherit;
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
+    .link-btn:hover {
+      text-decoration: underline;
+    }
+
+    .units-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .unit-option-btn {
+      background: #ffffff;
+      border: 1.5px solid var(--border-frost);
+      border-radius: 14px;
+      padding: 14px;
+      text-align: left;
+      cursor: pointer;
+      transition: all 0.18s ease;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-family: inherit;
+    }
+
+    .unit-option-btn:hover {
+      border-color: var(--accent-cyan);
+      background: #f8fdff;
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-md);
+    }
+
+    .unit-option-top {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      font-size: 0.9rem;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    .unit-option-top i {
+      color: var(--accent-blue);
+      font-size: 0.95rem;
+    }
+
+    .unit-option-desc {
+      font-size: 0.77rem;
+      color: var(--text-muted);
+      line-height: 1.35;
+    }
+
+    .custom-unit-box {
+      background: rgba(248, 251, 255, 0.95);
+      border: 1.5px solid var(--border-accent);
+      border-radius: 14px;
+      padding: 14px;
+      margin-top: 8px;
+    }
+
+    .custom-unit-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 10px;
     }
 
     /* App Shell */
@@ -134,10 +446,6 @@
     .new-chat-btn:hover {
       transform: translateY(-1px);
       box-shadow: 0 6px 20px rgba(37, 99, 235, 0.35);
-    }
-
-    .new-chat-btn:active {
-      transform: translateY(0);
     }
 
     .sidebar-section-label {
@@ -237,7 +545,14 @@
       color: var(--text-muted);
       display: flex;
       align-items: center;
+      justify-content: space-between;
       gap: 8px;
+    }
+
+    .sidebar-footer-brand {
+      display: flex;
+      align-items: center;
+      gap: 7px;
     }
 
     .sidebar-footer i {
@@ -269,12 +584,21 @@
       padding: 0 24px;
       z-index: 50;
       flex-shrink: 0;
+      gap: 12px;
     }
 
     .top-bar-left {
       display: flex;
       align-items: center;
       gap: 14px;
+      min-width: 0;
+    }
+
+    .top-bar-right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
     }
 
     .mobile-menu-btn {
@@ -289,48 +613,7 @@
       cursor: pointer;
       align-items: center;
       justify-content: center;
-    }
-
-    /* Avatar Component + Fallback */
-    .avatar-wrapper {
-      position: relative;
-      border-radius: 50%;
-      overflow: hidden;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: var(--accent-gradient);
-      color: #ffffff;
-      font-weight: 800;
       flex-shrink: 0;
-      box-shadow: 0 0 0 2px #ffffff, 0 0 14px var(--accent-glow);
-    }
-
-    .avatar-wrapper img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      display: block;
-    }
-
-    .avatar-fallback {
-      width: 100%;
-      height: 100%;
-      display: none;
-      align-items: center;
-      justify-content: center;
-      background: var(--accent-gradient);
-      color: #ffffff;
-      font-weight: 800;
-      letter-spacing: -0.02em;
-    }
-
-    .avatar-wrapper.img-failed img {
-      display: none;
-    }
-
-    .avatar-wrapper.img-failed .avatar-fallback {
-      display: flex;
     }
 
     .topbar-avatar {
@@ -342,7 +625,8 @@
     .brand-info {
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: 10px;
+      min-width: 0;
     }
 
     .brand-name {
@@ -352,6 +636,7 @@
       background: var(--accent-gradient);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
+      white-space: nowrap;
     }
 
     .status-badge {
@@ -365,6 +650,7 @@
       font-size: 0.75rem;
       font-weight: 600;
       color: #0e7490;
+      flex-shrink: 0;
     }
 
     .status-dot {
@@ -379,6 +665,41 @@
     @keyframes pulseDot {
       0%, 100% { opacity: 1; transform: scale(1); }
       50% { opacity: 0.6; transform: scale(0.85); }
+    }
+
+    .active-unit-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      background: #ffffff;
+      border: 1px solid var(--border-accent);
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--accent-blue);
+      max-width: 210px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .switch-unit-btn {
+      background: var(--bg-card);
+      border: 1px solid var(--border-frost);
+      color: var(--text-primary);
+      padding: 6px 12px;
+      border-radius: 999px;
+      font-family: inherit;
+      font-size: 0.78rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .switch-unit-btn:hover {
+      border-color: var(--accent-cyan);
+      color: var(--accent-blue);
     }
 
     /* Chat Scroll Area */
@@ -402,27 +723,23 @@
       align-items: center;
       justify-content: center;
       text-align: center;
-      padding: 24px 16px 20px;
+      padding: 20px 16px 18px;
       animation: fadeIn 0.35s ease;
     }
 
-    .welcome-screen.hidden {
-      display: none;
-    }
-
     .welcome-avatar {
-      width: 92px;
-      height: 92px;
-      font-size: 2.4rem;
-      margin-bottom: 18px;
+      width: 88px;
+      height: 88px;
+      font-size: 2.3rem;
+      margin-bottom: 16px;
       box-shadow: 0 0 0 4px #ffffff, 0 12px 32px rgba(37, 99, 235, 0.25);
     }
 
     .welcome-title {
-      font-size: 1.95rem;
+      font-size: 1.9rem;
       font-weight: 800;
       letter-spacing: -0.03em;
-      margin-bottom: 10px;
+      margin-bottom: 8px;
       color: var(--text-primary);
     }
 
@@ -433,11 +750,11 @@
     }
 
     .welcome-subtitle {
-      font-size: 0.98rem;
+      font-size: 0.96rem;
       color: var(--text-secondary);
       max-width: 620px;
-      line-height: 1.58;
-      margin-bottom: 26px;
+      line-height: 1.55;
+      margin-bottom: 24px;
     }
 
     .suggestions-grid {
@@ -453,7 +770,7 @@
       backdrop-filter: blur(12px);
       border: 1px solid var(--border-frost);
       border-radius: 16px;
-      padding: 16px 18px;
+      padding: 15px 18px;
       text-align: left;
       cursor: pointer;
       transition: all 0.2s ease;
@@ -903,13 +1220,19 @@
       }
 
       .top-bar {
-        padding: 0 14px;
+        padding: 0 12px;
       }
 
       .brand-name {
-        font-size: 1.15rem;
+        font-size: 1.1rem;
       }
 
+      .status-badge,
+      .active-unit-pill {
+        display: none;
+      }
+
+      .units-grid,
       .suggestions-grid {
         grid-template-columns: 1fr;
       }
@@ -918,14 +1241,165 @@
         max-width: 88%;
       }
 
-      .welcome-title {
-        font-size: 1.6rem;
+      .welcome-title,
+      .gate-title {
+        font-size: 1.45rem;
       }
     }
   </style>
 </head>
 <body>
-  <div class="app-container">
+  <!-- Step 1: Student Sign In & Create Strong Password Gate -->
+  <section class="gate-screen" id="authScreen">
+    <div class="gate-card">
+      <div class="gate-header">
+        <div class="avatar-wrapper gate-avatar">
+          <img src="avatar.png" alt="Metrix AI 01" onerror="this.parentElement.classList.add('img-failed')" />
+          <div class="avatar-fallback">M</div>
+        </div>
+        <h1 class="gate-title">Sign In to <span>Metrix AI 01</span></h1>
+        <p class="gate-subtitle">
+          Enter your student email and create a strong password to unlock your specialized study workspace.
+        </p>
+      </div>
+
+      <form id="authForm" novalidate>
+        <div id="authError" class="auth-error hidden"></div>
+
+        <div class="form-group">
+          <label class="form-label" for="studentEmail">Student Email</label>
+          <div class="input-control-wrap">
+            <input
+              type="email"
+              id="studentEmail"
+              class="form-input"
+              placeholder="student@university.ac.ke"
+              required
+              autocomplete="email"
+            />
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="studentPassword">Create Strong Password</label>
+          <div class="input-control-wrap">
+            <input
+              type="password"
+              id="studentPassword"
+              class="form-input"
+              placeholder="At least 8 chars, A-Z, a-z, 0-9, symbol"
+              required
+              autocomplete="new-password"
+            />
+            <button type="button" class="toggle-pass-btn" id="togglePasswordBtn" aria-label="Toggle password visibility">
+              <i class="fa-regular fa-eye"></i>
+            </button>
+          </div>
+          <div class="strength-meter">
+            <div class="strength-bar" id="passwordStrengthBar"></div>
+          </div>
+          <p class="strength-text" id="passwordStrengthText">
+            Use 8+ characters with uppercase, lowercase, a number, and a special character.
+          </p>
+        </div>
+
+        <button type="submit" class="primary-btn">
+          <span>Continue to Unit Selection</span>
+          <i class="fa-solid fa-arrow-right"></i>
+        </button>
+      </form>
+    </div>
+  </section>
+
+  <!-- Step 2: Six Unit Selection Buttons -->
+  <section class="gate-screen hidden" id="unitScreen">
+    <div class="gate-card">
+      <div class="gate-header">
+        <div class="avatar-wrapper gate-avatar">
+          <img src="avatar.png" alt="Metrix AI 01" onerror="this.parentElement.classList.add('img-failed')" />
+          <div class="avatar-fallback">M</div>
+        </div>
+        <h2 class="gate-title">Choose Your <span>Study Unit</span></h2>
+        <p class="gate-subtitle">
+          Select one of the six options below so Metrix AI 01 can specialize deeply in your unit.
+        </p>
+      </div>
+
+      <div class="student-banner">
+        <span class="student-email-badge" id="signedInEmailLabel"></span>
+        <button type="button" class="link-btn" id="signOutBtn">Sign out</button>
+      </div>
+
+      <div class="units-grid" id="unitsGrid">
+        <button type="button" class="unit-option-btn" data-unit="Computer Programming">
+          <div class="unit-option-top">
+            <i class="fa-solid fa-code"></i>
+            <span>1. Computer Programming</span>
+          </div>
+          <div class="unit-option-desc">Loops, structs, strings, arrays, pointers, real-life examples & Kenyan past papers.</div>
+        </button>
+
+        <button type="button" class="unit-option-btn" data-unit="Engineering Physics">
+          <div class="unit-option-top">
+            <i class="fa-solid fa-atom"></i>
+            <span>2. Engineering Physics</span>
+          </div>
+          <div class="unit-option-desc">Course outlines, mechanics, waves, electricity, labs & university past exams.</div>
+        </button>
+
+        <button type="button" class="unit-option-btn" data-unit="Engineering Chemistry">
+          <div class="unit-option-top">
+            <i class="fa-solid fa-flask"></i>
+            <span>3. Engineering Chemistry</span>
+          </div>
+          <div class="unit-option-desc">Course outlines, stoichiometry, thermodynamics, materials & past exam questions.</div>
+        </button>
+
+        <button type="button" class="unit-option-btn" data-unit="Engineering Mathematics">
+          <div class="unit-option-top">
+            <i class="fa-solid fa-square-root-variable"></i>
+            <span>4. Engineering Mathematics</span>
+          </div>
+          <div class="unit-option-desc">Course outlines, calculus, linear algebra, ODEs & Kenyan university past papers.</div>
+        </button>
+
+        <button type="button" class="unit-option-btn" data-unit="Academic Writing">
+          <div class="unit-option-top">
+            <i class="fa-solid fa-pen-nib"></i>
+            <span>5. Academic Writing</span>
+          </div>
+          <div class="unit-option-desc">Past papers, research reports, citations, structure & study guides.</div>
+        </button>
+
+        <button type="button" class="unit-option-btn" id="otherUnitBtn" data-unit="OTHER">
+          <div class="unit-option-top">
+            <i class="fa-solid fa-compass-drafting"></i>
+            <span>6. Any Other Unit</span>
+          </div>
+          <div class="unit-option-desc">Type any unit you are interested in (e.g., Engineering Drawing, Circuits).</div>
+        </button>
+      </div>
+
+      <div class="custom-unit-box hidden" id="customUnitBox">
+        <label class="form-label" for="customUnitInput">Enter Your Unit Name</label>
+        <input
+          type="text"
+          id="customUnitInput"
+          class="form-input"
+          placeholder="e.g., Engineering Drawing, Fluid Mechanics, Surveying..."
+        />
+        <div class="custom-unit-actions">
+          <button type="button" class="primary-btn" id="confirmCustomUnitBtn">
+            <span>Start Studying This Unit</span>
+            <i class="fa-solid fa-check"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Step 3: Main Chat Workspace -->
+  <div class="app-container hidden" id="chatApp">
     <!-- Mobile Sidebar Overlay -->
     <div class="sidebar-overlay" id="sidebarOverlay"></div>
 
@@ -942,8 +1416,11 @@
       <div class="chat-history-list" id="chatHistoryList"></div>
 
       <div class="sidebar-footer">
-        <i class="fa-solid fa-microchip"></i>
-        <span>Digital solution agency</span>
+        <div class="sidebar-footer-brand">
+          <i class="fa-solid fa-microchip"></i>
+          <span>Digital solution agency</span>
+        </div>
+        <button type="button" class="link-btn" id="sidebarSignOutBtn">Sign out</button>
       </div>
     </aside>
 
@@ -969,6 +1446,16 @@
             </span>
           </div>
         </div>
+
+        <div class="top-bar-right">
+          <span class="active-unit-pill" id="activeUnitBadge">
+            <i class="fa-solid fa-book-open"></i>
+            <span id="activeUnitText">Computer Programming</span>
+          </span>
+          <button type="button" class="switch-unit-btn" id="switchUnitBtn">
+            Change Unit
+          </button>
+        </div>
       </header>
 
       <!-- Scrollable Messages & Welcome Screen -->
@@ -982,30 +1469,30 @@
             </div>
 
             <h2 class="welcome-title">Welcome to <span>Metrix AI 01</span></h2>
-            <p class="welcome-subtitle">
-              Majoring in Computer Programming, Engineering Physics, Chemistry & Mathematics, Academic Writing, and Engineering Drawing tailored to Kenyan university curricula and past exams.
+            <p class="welcome-subtitle" id="welcomeSubtitle">
+              Specialized study support for Kenyan university students across Computer Programming, Engineering Physics, Chemistry, Mathematics, Academic Writing, Engineering Drawing, and custom units.
             </p>
 
             <div class="suggestions-grid" id="suggestionsGrid">
-              <button class="suggestion-card" type="button" data-prompt="Give me a Kenyan university-style C programming past exam question on arrays, pointers, loops, and structures with a real-life example and full working solution.">
+              <button class="suggestion-card" type="button" data-prompt="Give me a Kenyan university-style C programming past exam question covering loops, arrays, pointers, and structures with a real-life example and full code solution.">
                 <div class="suggestion-icon"><i class="fa-solid fa-code"></i></div>
                 <h4>1. Computer Programming</h4>
-                <p>Pointers, arrays, strings, loops, structs & past paper practice.</p>
+                <p>Loops, structs, strings, arrays, pointers & Kenyan past exams.</p>
               </button>
 
-              <button class="suggestion-card" type="button" data-prompt="Provide the complete course outline and a Kenyan university past-paper style problem with step-by-step solutions across Engineering Physics, Chemistry, and Engineering Mathematics.">
+              <button class="suggestion-card" type="button" data-prompt="Give me the course outline and a Kenyan university past-paper problem with step-by-step solutions for Engineering Physics, Engineering Chemistry, and Engineering Mathematics.">
                 <div class="suggestion-icon"><i class="fa-solid fa-square-root-variable"></i></div>
                 <h4>2. Physics, Chemistry & Math</h4>
-                <p>Course outlines, university past exams, and worked problems.</p>
+                <p>Full course outlines, university past papers & worked solutions.</p>
               </button>
 
-              <button class="suggestion-card" type="button" data-prompt="Share academic writing guidelines, common Kenyan university exam questions on academic writing, citation rules, and a practical structure for an engineering report.">
+              <button class="suggestion-card" type="button" data-prompt="Provide academic writing guidelines, common Kenyan university exam questions on academic writing, referencing rules, and a clear report template.">
                 <div class="suggestion-icon"><i class="fa-solid fa-pen-nib"></i></div>
                 <h4>3. Academic Writing</h4>
-                <p>Past paper questions, referencing, structure & study guides.</p>
+                <p>Past papers, citations, structure & study materials.</p>
               </button>
 
-              <button class="suggestion-card" type="button" data-prompt="Generate a clean engineering drawing diagram in SVG showing first-angle orthographic projection (front, top, and side views) of a stepped bracket with clear labels, and explain how to read it.">
+              <button class="suggestion-card" type="button" data-prompt="Generate a clean engineering drawing diagram in SVG showing first-angle orthographic projection (front, top, and side views) of a stepped bracket with clear labels, and explain how to construct it.">
                 <div class="suggestion-icon"><i class="fa-solid fa-compass-drafting"></i></div>
                 <h4>4. Engineering Drawing</h4>
                 <p>Clean technical diagrams with clear explanations & exam tips.</p>
@@ -1025,7 +1512,7 @@
             <textarea
               id="messageInput"
               rows="1"
-              placeholder="Ask Metrix AI 01 about programming, math, chemistry, physics, academic writing, or drawing..."
+              placeholder="Ask Metrix AI 01 about your selected unit..."
               aria-label="Message input"
             ></textarea>
             <button id="sendBtn" type="button" disabled aria-label="Send message">
