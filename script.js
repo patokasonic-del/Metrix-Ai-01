@@ -1,5 +1,7 @@
 (() => {
-  const STORAGE_KEY = 'metrix_ai_01_chats_v1';
+  const STORAGE_KEY = 'metrix_ai_01_chats_v2';
+  const NEW_CHAT_GREETING =
+    "Hello! Welcome to **Metrix AI 01**. I'm here to help you with **Computer Programming** (loops, structures, strings, arrays, pointers, real-life examples & Kenyan university past papers), **Engineering Physics, Chemistry & Mathematics** (course outlines & university past exam questions), **Academic Writing** (past papers, formatting & research materials), and **Engineering Drawing** (clear diagrams with step-by-step explanations).\n\nHow can I help you today?";
 
   // DOM Elements
   const sidebar = document.getElementById('sidebar');
@@ -51,7 +53,7 @@
     return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
   }
 
-  // --- Safe HTML Escaping & Markdown Renderer ---
+  // --- Safe HTML Escaping & SVG Sanitizer ---
   function escapeHtml(str) {
     return String(str)
       .replace(/&/g, '&amp;')
@@ -59,6 +61,45 @@
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
+  }
+
+  function sanitizeSvg(rawSvg) {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(rawSvg, 'image/svg+xml');
+    const svgEl = doc.querySelector('svg');
+    if (!svgEl || doc.querySelector('parsererror')) {
+      return null;
+    }
+
+    // Remove dangerous elements & event handlers
+    const forbiddenTags = ['script', 'iframe', 'object', 'embed', 'foreignObject'];
+    forbiddenTags.forEach((tag) => {
+      svgEl.querySelectorAll(tag).forEach((el) => el.remove());
+    });
+
+    const walk = (node) => {
+      if (node.nodeType === 1) {
+        Array.from(node.attributes).forEach((attr) => {
+          const name = attr.name.toLowerCase();
+          const val = attr.value.trim().toLowerCase();
+          if (name.startsWith('on') || (name === 'href' && val.startsWith('javascript:'))) {
+            node.removeAttribute(attr.name);
+          }
+        });
+      }
+      Array.from(node.childNodes).forEach(walk);
+    };
+    walk(svgEl);
+
+    if (!svgEl.getAttribute('viewBox')) {
+      const w = parseFloat(svgEl.getAttribute('width')) || 640;
+      const h = parseFloat(svgEl.getAttribute('height')) || 360;
+      svgEl.setAttribute('viewBox', `0 0 ${w} ${h}`);
+    }
+    svgEl.removeAttribute('width');
+    svgEl.removeAttribute('height');
+
+    return svgEl.outerHTML;
   }
 
   function formatInlineMarkdown(escapedText) {
@@ -71,8 +112,26 @@
 
   function renderMarkdown(rawText) {
     const codeBlocks = [];
-    // Extract fenced code blocks first so their contents aren't parsed as lists/headings
-    const withPlaceholders = String(rawText).replace(
+    const svgBlocks = [];
+
+    // Extract ```svg ... ``` engineering diagrams first
+    let processed = String(rawText).replace(
+      /```svg\s*\n([\s\S]*?)```/gi,
+      (_, svgContent) => {
+        const cleanSvg = sanitizeSvg(svgContent.trim());
+        if (cleanSvg) {
+          const idx = svgBlocks.length;
+          svgBlocks.push(cleanSvg);
+          return `@@SVGBLOCK_${idx}@@`;
+        }
+        const codeIdx = codeBlocks.length;
+        codeBlocks.push({ lang: 'svg', code: svgContent.trim() });
+        return `@@CODEBLOCK_${codeIdx}@@`;
+      }
+    );
+
+    // Extract other fenced code blocks
+    processed = processed.replace(
       /```([a-zA-Z0-9_+-]*)\n([\s\S]*?)```/g,
       (_, lang, code) => {
         const index = codeBlocks.length;
@@ -84,7 +143,7 @@
       }
     );
 
-    const lines = withPlaceholders.split('\n');
+    const lines = processed.split('\n');
     const output = [];
     let inUl = false;
     let inOl = false;
@@ -104,7 +163,24 @@
       const line = lines[i];
       const trimmed = line.trim();
 
-      // Check code block placeholder
+      // SVG Diagram Block Placeholder
+      const svgMatch = trimmed.match(/^@@SVGBLOCK_(\d+)@@$/);
+      if (svgMatch) {
+        closeLists();
+        const svgMarkup = svgBlocks[Number(svgMatch[1])];
+        output.push(`
+          <div class="diagram-block-wrapper">
+            <div class="diagram-block-header">
+              <span><i class="fa-solid fa-compass-drafting"></i> Engineering Drawing Diagram</span>
+              <span>Technical View</span>
+            </div>
+            <div class="diagram-canvas">${svgMarkup}</div>
+          </div>
+        `);
+        continue;
+      }
+
+      // Code Block Placeholder
       const codeMatch = trimmed.match(/^@@CODEBLOCK_(\d+)@@$/);
       if (codeMatch) {
         closeLists();
@@ -181,7 +257,6 @@
     const container = document.createElement('div');
     container.innerHTML = output.join('');
 
-    // Attach copy handlers safely using original unescaped code strings
     container.querySelectorAll('.copy-code-btn').forEach((btn) => {
       const idx = Number(btn.getAttribute('data-code-index'));
       const rawCode = codeBlocks[idx]?.code || '';
@@ -293,7 +368,14 @@
       return;
     }
 
-    welcomeScreen.classList.add('hidden');
+    // Show welcome card banner above messages only when chat has just the initial greeting
+    const hasUserMessage = chat.messages.some((m) => m.role === 'user');
+    if (!hasUserMessage) {
+      welcomeScreen.classList.remove('hidden');
+    } else {
+      welcomeScreen.classList.add('hidden');
+    }
+
     chat.messages.forEach((msg, idx) => {
       appendMessageToDOM(msg, idx);
     });
@@ -322,7 +404,6 @@
       const actionBar = document.createElement('div');
       actionBar.className = 'message-actions';
 
-      // Copy Reply Button
       const copyBtn = document.createElement('button');
       copyBtn.type = 'button';
       copyBtn.className = 'action-btn';
@@ -336,12 +417,10 @@
         });
       });
 
-      // Timestamp
       const timeSpan = document.createElement('span');
       timeSpan.className = 'msg-timestamp';
       timeSpan.textContent = msg.time || formatTime();
 
-      // Thumbs Up & Thumbs Down
       const upBtn = document.createElement('button');
       upBtn.type = 'button';
       upBtn.className = `action-btn ${msg.feedback === 'up' ? 'active-like' : ''}`;
@@ -426,7 +505,35 @@
   // --- Chat Lifecycle ---
   function startNewChat(closeSidebar = true) {
     if (isGenerating) return;
-    currentChatId = null;
+
+    // Reuse an existing untouched greeting-only chat if one is currently active
+    const activeChat = getCurrentChat();
+    if (activeChat && activeChat.messages.length === 1 && activeChat.messages[0].isGreeting) {
+      renderSidebar();
+      renderMessages();
+      if (closeSidebar) closeMobileSidebar();
+      messageInput.focus();
+      return;
+    }
+
+    const newChat = {
+      id: 'chat_' + Date.now(),
+      title: 'New Study Session',
+      messages: [
+        {
+          role: 'assistant',
+          content: NEW_CHAT_GREETING,
+          time: formatTime(),
+          feedback: null,
+          isGreeting: true,
+        },
+      ],
+    };
+
+    chats.unshift(newChat);
+    currentChatId = newChat.id;
+    saveChats();
+
     renderSidebar();
     renderMessages();
     messageInput.value = '';
@@ -449,8 +556,12 @@
     if (currentChatId === chatId) {
       currentChatId = chats.length > 0 ? chats[0].id : null;
     }
-    renderSidebar();
-    renderMessages();
+    if (!currentChatId) {
+      startNewChat(false);
+    } else {
+      renderSidebar();
+      renderMessages();
+    }
   }
 
   // --- Sending Messages ---
@@ -460,20 +571,23 @@
     const text = (overrideText !== null ? overrideText : messageInput.value).trim();
     if (!text) return;
 
-    // Create chat session on first message
     let chat = getCurrentChat();
     if (!chat) {
-      const title = text.length > 36 ? text.slice(0, 36) + '...' : text;
       chat = {
         id: 'chat_' + Date.now(),
-        title,
+        title: 'New Study Session',
         messages: [],
       };
       chats.unshift(chat);
       currentChatId = chat.id;
     }
 
-    // Add user message
+    // Set chat title from the first real user prompt
+    const hasPriorUserMsg = chat.messages.some((m) => m.role === 'user');
+    if (!hasPriorUserMsg) {
+      chat.title = text.length > 36 ? text.slice(0, 36) + '...' : text;
+    }
+
     const userMsg = {
       role: 'user',
       content: text,
@@ -482,7 +596,6 @@
     chat.messages.push(userMsg);
     saveChats();
 
-    // Reset input & update UI
     messageInput.value = '';
     autoResizeInput();
     updateSendButtonState();
@@ -491,14 +604,13 @@
     renderSidebar();
     scrollToBottom();
 
-    // Send to backend
     isGenerating = true;
     updateSendButtonState();
     showTypingIndicator();
 
     try {
       const apiMessages = chat.messages
-        .filter((m) => !m.isError && (m.role === 'user' || m.role === 'assistant'))
+        .filter((m) => !m.isError && !m.isGreeting && (m.role === 'user' || m.role === 'assistant'))
         .map((m) => ({ role: m.role, content: m.content }));
 
       const response = await fetch('/api/chat', {
