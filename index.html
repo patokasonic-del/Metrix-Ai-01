@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Metrix AI 01 — Coding, Math, Chemistry & Study Assistant</title>
-  <!-- Google Fonts: Inter & JetBrains Mono for crisp code & formulas -->
+  <title>Metrix AI 01 — Engineering, Coding & Academic Assistant</title>
+  <!-- Google Fonts: Inter & JetBrains Mono -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -23,11 +23,11 @@
       --bg-main: #f0f6fc;
       --bg-gradient: radial-gradient(circle at top right, #e0f2fe 0%, #f0f6fc 45%, #eef2ff 100%);
       --bg-sidebar: rgba(248, 251, 255, 0.88);
-      --bg-card: rgba(255, 255, 255, 0.85);
+      --bg-card: rgba(255, 255, 255, 0.86);
       --bg-card-hover: #ffffff;
-      --bg-topbar: rgba(240, 246, 252, 0.85);
+      --bg-topbar: rgba(240, 246, 252, 0.88);
       --bg-user-bubble: linear-gradient(135deg, #2563eb 0%, #4f46e5 100%);
-      --bg-input: rgba(255, 255, 255, 0.95);
+      --bg-input: rgba(255, 255, 255, 0.96);
 
       /* Borders & Shadows */
       --border-frost: rgba(148, 163, 184, 0.24);
@@ -402,7 +402,7 @@
       align-items: center;
       justify-content: center;
       text-align: center;
-      padding: 36px 16px 20px;
+      padding: 24px 16px 20px;
       animation: fadeIn 0.35s ease;
     }
 
@@ -411,15 +411,15 @@
     }
 
     .welcome-avatar {
-      width: 96px;
-      height: 96px;
-      font-size: 2.5rem;
-      margin-bottom: 20px;
+      width: 92px;
+      height: 92px;
+      font-size: 2.4rem;
+      margin-bottom: 18px;
       box-shadow: 0 0 0 4px #ffffff, 0 12px 32px rgba(37, 99, 235, 0.25);
     }
 
     .welcome-title {
-      font-size: 2rem;
+      font-size: 1.95rem;
       font-weight: 800;
       letter-spacing: -0.03em;
       margin-bottom: 10px;
@@ -433,11 +433,11 @@
     }
 
     .welcome-subtitle {
-      font-size: 1.02rem;
+      font-size: 0.98rem;
       color: var(--text-secondary);
-      max-width: 580px;
-      line-height: 1.55;
-      margin-bottom: 32px;
+      max-width: 620px;
+      line-height: 1.58;
+      margin-bottom: 26px;
     }
 
     .suggestions-grid {
@@ -445,7 +445,7 @@
       grid-template-columns: repeat(2, 1fr);
       gap: 14px;
       width: 100%;
-      max-width: 720px;
+      max-width: 740px;
     }
 
     .suggestion-card {
@@ -460,7 +460,7 @@
       box-shadow: var(--shadow-sm);
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 7px;
     }
 
     .suggestion-card:hover {
@@ -499,6 +499,7 @@
       display: flex;
       flex-direction: column;
       gap: 24px;
+      margin-top: 12px;
     }
 
     @keyframes fadeIn {
@@ -615,6 +616,43 @@
       padding: 2px 6px;
       border-radius: 6px;
       border: 1px solid rgba(37, 99, 235, 0.15);
+    }
+
+    /* Engineering SVG Diagram Box */
+    .diagram-block-wrapper {
+      margin: 14px 0;
+      border-radius: 14px;
+      overflow: hidden;
+      background: #ffffff;
+      border: 1px solid var(--border-accent);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .diagram-block-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 14px;
+      background: rgba(6, 182, 212, 0.08);
+      border-bottom: 1px solid var(--border-frost);
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--accent-blue);
+    }
+
+    .diagram-canvas {
+      padding: 14px;
+      overflow-x: auto;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background: #f8fbff;
+    }
+
+    .diagram-canvas svg {
+      max-width: 100%;
+      height: auto;
+      display: block;
     }
 
     /* Fenced Code Blocks */
@@ -945,32 +983,32 @@
 
             <h2 class="welcome-title">Welcome to <span>Metrix AI 01</span></h2>
             <p class="welcome-subtitle">
-              Your smart study companion for coding, debugging, mathematics, chemistry, and other student subjects—explained clearly step by step.
+              Majoring in Computer Programming, Engineering Physics, Chemistry & Mathematics, Academic Writing, and Engineering Drawing tailored to Kenyan university curricula and past exams.
             </p>
 
             <div class="suggestions-grid" id="suggestionsGrid">
-              <button class="suggestion-card" type="button" data-prompt="Debug this Python function that gives an IndexError when the list is empty:&#10;&#10;```python&#10;def get_first_item(items):&#10;    return items[0]&#10;```">
-                <div class="suggestion-icon"><i class="fa-solid fa-bug"></i></div>
-                <h4>Debug Code Errors</h4>
-                <p>Find and fix bugs in Python, JavaScript, C, and more.</p>
+              <button class="suggestion-card" type="button" data-prompt="Give me a Kenyan university-style C programming past exam question on arrays, pointers, loops, and structures with a real-life example and full working solution.">
+                <div class="suggestion-icon"><i class="fa-solid fa-code"></i></div>
+                <h4>1. Computer Programming</h4>
+                <p>Pointers, arrays, strings, loops, structs & past paper practice.</p>
               </button>
 
-              <button class="suggestion-card" type="button" data-prompt="Solve the quadratic equation 2x^2 - 7x + 3 = 0 step by step and show how to check the roots.">
+              <button class="suggestion-card" type="button" data-prompt="Provide the complete course outline and a Kenyan university past-paper style problem with step-by-step solutions across Engineering Physics, Chemistry, and Engineering Mathematics.">
                 <div class="suggestion-icon"><i class="fa-solid fa-square-root-variable"></i></div>
-                <h4>Solve Math Step by Step</h4>
-                <p>Walk through algebra, calculus, and equations clearly.</p>
+                <h4>2. Physics, Chemistry & Math</h4>
+                <p>Course outlines, university past exams, and worked problems.</p>
               </button>
 
-              <button class="suggestion-card" type="button" data-prompt="Balance the chemical equation C3H8 + O2 -> CO2 + H2O and explain how to find the moles of CO2 produced from 2 moles of C3H8.">
-                <div class="suggestion-icon"><i class="fa-solid fa-flask"></i></div>
-                <h4>Chemistry & Stoichiometry</h4>
-                <p>Balance equations, work through moles, and review concepts.</p>
+              <button class="suggestion-card" type="button" data-prompt="Share academic writing guidelines, common Kenyan university exam questions on academic writing, citation rules, and a practical structure for an engineering report.">
+                <div class="suggestion-icon"><i class="fa-solid fa-pen-nib"></i></div>
+                <h4>3. Academic Writing</h4>
+                <p>Past paper questions, referencing, structure & study guides.</p>
               </button>
 
-              <button class="suggestion-card" type="button" data-prompt="Explain Newton's second law (F = ma) with a practical student example and clear units.">
-                <div class="suggestion-icon"><i class="fa-solid fa-atom"></i></div>
-                <h4>Study Core Subjects</h4>
-                <p>Get clear explanations across science and coursework.</p>
+              <button class="suggestion-card" type="button" data-prompt="Generate a clean engineering drawing diagram in SVG showing first-angle orthographic projection (front, top, and side views) of a stepped bracket with clear labels, and explain how to read it.">
+                <div class="suggestion-icon"><i class="fa-solid fa-compass-drafting"></i></div>
+                <h4>4. Engineering Drawing</h4>
+                <p>Clean technical diagrams with clear explanations & exam tips.</p>
               </button>
             </div>
           </section>
@@ -987,7 +1025,7 @@
             <textarea
               id="messageInput"
               rows="1"
-              placeholder="Ask Metrix AI 01 about coding, math, chemistry, or studies..."
+              placeholder="Ask Metrix AI 01 about programming, math, chemistry, physics, academic writing, or drawing..."
               aria-label="Message input"
             ></textarea>
             <button id="sendBtn" type="button" disabled aria-label="Send message">
