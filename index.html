@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Metrix AI 01 — Coding & Debugging Assistant</title>
-  <!-- Google Fonts: Inter & JetBrains Mono for crisp code -->
+  <title>Metrix AI 01 — Coding, Math, Chemistry & Study Assistant</title>
+  <!-- Google Fonts: Inter & JetBrains Mono for crisp code & formulas -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -435,7 +435,7 @@
     .welcome-subtitle {
       font-size: 1.02rem;
       color: var(--text-secondary);
-      max-width: 540px;
+      max-width: 580px;
       line-height: 1.55;
       margin-bottom: 32px;
     }
@@ -945,32 +945,32 @@
 
             <h2 class="welcome-title">Welcome to <span>Metrix AI 01</span></h2>
             <p class="welcome-subtitle">
-              Your personal coding and debugging companion. Paste broken code, ask programming questions, or explore clean solutions step by step.
+              Your smart study companion for coding, debugging, mathematics, chemistry, and other student subjects—explained clearly step by step.
             </p>
 
             <div class="suggestions-grid" id="suggestionsGrid">
               <button class="suggestion-card" type="button" data-prompt="Debug this Python function that gives an IndexError when the list is empty:&#10;&#10;```python&#10;def get_first_item(items):&#10;    return items[0]&#10;```">
                 <div class="suggestion-icon"><i class="fa-solid fa-bug"></i></div>
-                <h4>Debug a Python Error</h4>
-                <p>Find and fix an IndexError in a function cleanly.</p>
+                <h4>Debug Code Errors</h4>
+                <p>Find and fix bugs in Python, JavaScript, C, and more.</p>
               </button>
 
-              <button class="suggestion-card" type="button" data-prompt="Explain how JavaScript async/await works with a simple fetch API example.">
-                <div class="suggestion-icon"><i class="fa-brands fa-js"></i></div>
-                <h4>Understand Async / Await</h4>
-                <p>Learn modern JavaScript promises with practical code.</p>
+              <button class="suggestion-card" type="button" data-prompt="Solve the quadratic equation 2x^2 - 7x + 3 = 0 step by step and show how to check the roots.">
+                <div class="suggestion-icon"><i class="fa-solid fa-square-root-variable"></i></div>
+                <h4>Solve Math Step by Step</h4>
+                <p>Walk through algebra, calculus, and equations clearly.</p>
               </button>
 
-              <button class="suggestion-card" type="button" data-prompt="Write a C program to reverse a string without using built-in reverse functions, and explain each step.">
-                <div class="suggestion-icon"><i class="fa-solid fa-code"></i></div>
-                <h4>Write a C Algorithm</h4>
-                <p>Build a string reversal program from scratch.</p>
+              <button class="suggestion-card" type="button" data-prompt="Balance the chemical equation C3H8 + O2 -> CO2 + H2O and explain how to find the moles of CO2 produced from 2 moles of C3H8.">
+                <div class="suggestion-icon"><i class="fa-solid fa-flask"></i></div>
+                <h4>Chemistry & Stoichiometry</h4>
+                <p>Balance equations, work through moles, and review concepts.</p>
               </button>
 
-              <button class="suggestion-card" type="button" data-prompt="What is the difference between == and === in JavaScript, and when should I use each?">
-                <div class="suggestion-icon"><i class="fa-solid fa-lightbulb"></i></div>
-                <h4>Compare Operators</h4>
-                <p>Avoid common type-coercion bugs in web apps.</p>
+              <button class="suggestion-card" type="button" data-prompt="Explain Newton's second law (F = ma) with a practical student example and clear units.">
+                <div class="suggestion-icon"><i class="fa-solid fa-atom"></i></div>
+                <h4>Study Core Subjects</h4>
+                <p>Get clear explanations across science and coursework.</p>
               </button>
             </div>
           </section>
@@ -987,7 +987,7 @@
             <textarea
               id="messageInput"
               rows="1"
-              placeholder="Ask Metrix AI 01 to write or debug code..."
+              placeholder="Ask Metrix AI 01 about coding, math, chemistry, or studies..."
               aria-label="Message input"
             ></textarea>
             <button id="sendBtn" type="button" disabled aria-label="Send message">
