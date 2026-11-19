@@ -1,12 +1,35 @@
 (() => {
-  const STORAGE_KEY = 'metrix_ai_01_chats_v2';
-  const NEW_CHAT_GREETING =
-    "Hello! Welcome to **Metrix AI 01**. I'm here to help you with **Computer Programming** (loops, structures, strings, arrays, pointers, real-life examples & Kenyan university past papers), **Engineering Physics, Chemistry & Mathematics** (course outlines & university past exam questions), **Academic Writing** (past papers, formatting & research materials), and **Engineering Drawing** (clear diagrams with step-by-step explanations).\n\nHow can I help you today?";
+  const SESSION_KEY = 'metrix_ai_01_session_v1';
+  const CHATS_KEY = 'metrix_ai_01_chats_by_unit_v1';
 
-  // DOM Elements
+  // Auth & Unit Gate Elements
+  const authScreen = document.getElementById('authScreen');
+  const authForm = document.getElementById('authForm');
+  const authError = document.getElementById('authError');
+  const studentEmailInput = document.getElementById('studentEmail');
+  const studentPasswordInput = document.getElementById('studentPassword');
+  const togglePasswordBtn = document.getElementById('togglePasswordBtn');
+  const passwordStrengthBar = document.getElementById('passwordStrengthBar');
+  const passwordStrengthText = document.getElementById('passwordStrengthText');
+
+  const unitScreen = document.getElementById('unitScreen');
+  const signedInEmailLabel = document.getElementById('signedInEmailLabel');
+  const signOutBtn = document.getElementById('signOutBtn');
+  const unitsGrid = document.getElementById('unitsGrid');
+  const otherUnitBtn = document.getElementById('otherUnitBtn');
+  const customUnitBox = document.getElementById('customUnitBox');
+  const customUnitInput = document.getElementById('customUnitInput');
+  const confirmCustomUnitBtn = document.getElementById('confirmCustomUnitBtn');
+
+  // Chat Workspace Elements
+  const chatApp = document.getElementById('chatApp');
   const sidebar = document.getElementById('sidebar');
   const sidebarOverlay = document.getElementById('sidebarOverlay');
   const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+  const sidebarSignOutBtn = document.getElementById('sidebarSignOutBtn');
+  const switchUnitBtn = document.getElementById('switchUnitBtn');
+  const activeUnitText = document.getElementById('activeUnitText');
+  const welcomeSubtitle = document.getElementById('welcomeSubtitle');
   const newChatBtn = document.getElementById('newChatBtn');
   const chatHistoryList = document.getElementById('chatHistoryList');
   const chatContainer = document.getElementById('chatContainer');
@@ -16,36 +39,184 @@
   const messageInput = document.getElementById('messageInput');
   const sendBtn = document.getElementById('sendBtn');
 
-  // State
-  let chats = loadChats();
+  // Application State
+  let session = loadSession(); // { email, passwordHash, selectedUnit }
+  let chatsByUnit = loadChatsByUnit();
   let currentChatId = null;
   let isGenerating = false;
 
-  // Initialize
-  renderSidebar();
-  startNewChat(false);
+  // Boot Flow
+  syncViewState();
 
-  // --- Storage Helpers ---
-  function loadChats() {
+  // --- Session & Storage Helpers ---
+  function loadSession() {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      const parsed = raw ? JSON.parse(raw) : [];
-      return Array.isArray(parsed) ? parsed : [];
+      const raw = localStorage.getItem(SESSION_KEY);
+      return raw ? JSON.parse(raw) : null;
     } catch {
-      return [];
+      return null;
     }
   }
 
-  function saveChats() {
+  function saveSession() {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(chats));
+      if (session) {
+        localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+      } else {
+        localStorage.removeItem(SESSION_KEY);
+      }
     } catch (err) {
-      console.error('Failed to save chats to localStorage:', err);
+      console.error('Failed to save session:', err);
     }
+  }
+
+  function loadChatsByUnit() {
+    try {
+      const raw = localStorage.getItem(CHATS_KEY);
+      const parsed = raw ? JSON.parse(raw) : {};
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+
+  function saveChatsByUnit() {
+    try {
+      localStorage.setItem(CHATS_KEY, JSON.stringify(chatsByUnit));
+    } catch (err) {
+      console.error('Failed to save chats:', err);
+    }
+  }
+
+  function getUnitChats() {
+    const unit = session?.selectedUnit || 'General Studies';
+    if (!Array.isArray(chatsByUnit[unit])) {
+      chatsByUnit[unit] = [];
+    }
+    return chatsByUnit[unit];
   }
 
   function getCurrentChat() {
-    return chats.find((c) => c.id === currentChatId) || null;
+    const list = getUnitChats();
+    return list.find((c) => c.id === currentChatId) || null;
+  }
+
+  function buildUnitGreeting(unitName) {
+    return `Hello! Welcome to **Metrix AI 01**. I am now specialized for **${unitName}**.\n\nI can help you with concepts, course outlines, step-by-step problem solving, Kenyan university past paper practice, and clear explanations. How can I help you with **${unitName}** today?`;
+  }
+
+  // --- Password Strength & Validation ---
+  function evaluatePassword(password) {
+    const checks = {
+      length: password.length >= 8,
+      upper: /[A-Z]/.test(password),
+      lower: /[a-z]/.test(password),
+      number: /[0-9]/.test(password),
+      special: /[^A-Za-z0-9]/.test(password),
+    };
+    const score = Object.values(checks).filter(Boolean).length;
+    return { checks, score, isStrong: Object.values(checks).every(Boolean) };
+  }
+
+  function updatePasswordMeter() {
+    const val = studentPasswordInput.value;
+    const { score, isStrong } = evaluatePassword(val);
+    const percent = Math.min(100, (score / 5) * 100);
+    passwordStrengthBar.style.width = `${percent}%`;
+
+    if (!val) {
+      passwordStrengthBar.style.backgroundColor = '#cbd5e1';
+      passwordStrengthText.textContent =
+        'Use 8+ characters with uppercase, lowercase, a number, and a special character.';
+      passwordStrengthText.style.color = 'var(--text-muted)';
+      return;
+    }
+
+    if (score <= 2) {
+      passwordStrengthBar.style.backgroundColor = '#ef4444';
+      passwordStrengthText.textContent = 'Weak password — add 8+ chars, upper/lowercase, number & symbol.';
+      passwordStrengthText.style.color = '#b91c1c';
+    } else if (score < 5 || !isStrong) {
+      passwordStrengthBar.style.backgroundColor = '#f59e0b';
+      passwordStrengthText.textContent = 'Moderate password — include all 5 requirements for a strong password.';
+      passwordStrengthText.style.color = '#b45309';
+    } else {
+      passwordStrengthBar.style.backgroundColor = '#10b981';
+      passwordStrengthText.textContent = 'Strong password ready.';
+      passwordStrengthText.style.color = '#047857';
+    }
+  }
+
+  function showAuthError(msg) {
+    authError.textContent = msg;
+    authError.classList.remove('hidden');
+  }
+
+  function clearAuthError() {
+    authError.textContent = '';
+    authError.classList.add('hidden');
+  }
+
+  // --- Screen Navigation ---
+  function syncViewState() {
+    if (!session || !session.email) {
+      authScreen.classList.remove('hidden');
+      unitScreen.classList.add('hidden');
+      chatApp.classList.add('hidden');
+      return;
+    }
+
+    if (!session.selectedUnit) {
+      authScreen.classList.add('hidden');
+      unitScreen.classList.remove('hidden');
+      chatApp.classList.add('hidden');
+      signedInEmailLabel.textContent = `Signed in: ${session.email}`;
+      customUnitBox.classList.add('hidden');
+      customUnitInput.value = '';
+      return;
+    }
+
+    authScreen.classList.add('hidden');
+    unitScreen.classList.add('hidden');
+    chatApp.classList.remove('hidden');
+
+    activeUnitText.textContent = session.selectedUnit;
+    welcomeSubtitle.textContent = `Specialized study mode active for ${session.selectedUnit} (Kenyan university curricula, past papers, step-by-step solutions, code, and engineering diagrams).`;
+
+    const unitChats = getUnitChats();
+    if (!unitChats.some((c) => c.id === currentChatId)) {
+      currentChatId = unitChats.length > 0 ? unitChats[0].id : null;
+    }
+
+    renderSidebar();
+    if (!currentChatId) {
+      startNewChat(false);
+    } else {
+      renderMessages();
+    }
+  }
+
+  function selectUnitAndOpenChat(unitName) {
+    const cleanUnit = String(unitName || '').trim();
+    if (!cleanUnit) return;
+    session.selectedUnit = cleanUnit;
+    saveSession();
+    currentChatId = null;
+    syncViewState();
+    messageInput.focus();
+  }
+
+  function signOutUser() {
+    if (isGenerating) return;
+    session = null;
+    currentChatId = null;
+    saveSession();
+    closeMobileSidebar();
+    studentEmailInput.value = '';
+    studentPasswordInput.value = '';
+    updatePasswordMeter();
+    clearAuthError();
+    syncViewState();
   }
 
   // --- Time Formatting ---
@@ -71,7 +242,6 @@
       return null;
     }
 
-    // Remove dangerous elements & event handlers
     const forbiddenTags = ['script', 'iframe', 'object', 'embed', 'foreignObject'];
     forbiddenTags.forEach((tag) => {
       svgEl.querySelectorAll(tag).forEach((el) => el.remove());
@@ -103,9 +273,7 @@
   }
 
   function formatInlineMarkdown(escapedText) {
-    // Inline code `...`
     let html = escapedText.replace(/`([^`\n]+)`/g, '<code class="inline-code">$1</code>');
-    // Bold **...**
     html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
     return html;
   }
@@ -114,7 +282,6 @@
     const codeBlocks = [];
     const svgBlocks = [];
 
-    // Extract ```svg ... ``` engineering diagrams first
     let processed = String(rawText).replace(
       /```svg\s*\n([\s\S]*?)```/gi,
       (_, svgContent) => {
@@ -130,7 +297,6 @@
       }
     );
 
-    // Extract other fenced code blocks
     processed = processed.replace(
       /```([a-zA-Z0-9_+-]*)\n([\s\S]*?)```/g,
       (_, lang, code) => {
@@ -163,7 +329,6 @@
       const line = lines[i];
       const trimmed = line.trim();
 
-      // SVG Diagram Block Placeholder
       const svgMatch = trimmed.match(/^@@SVGBLOCK_(\d+)@@$/);
       if (svgMatch) {
         closeLists();
@@ -180,7 +345,6 @@
         continue;
       }
 
-      // Code Block Placeholder
       const codeMatch = trimmed.match(/^@@CODEBLOCK_(\d+)@@$/);
       if (codeMatch) {
         closeLists();
@@ -207,7 +371,6 @@
         continue;
       }
 
-      // Headings (#, ##, ###)
       const headingMatch = trimmed.match(/^(#{1,3})\s+(.+)$/);
       if (headingMatch) {
         closeLists();
@@ -217,7 +380,6 @@
         continue;
       }
 
-      // Bullet list (- or *)
       const ulMatch = trimmed.match(/^[-*]\s+(.+)$/);
       if (ulMatch) {
         if (inOl) {
@@ -232,7 +394,6 @@
         continue;
       }
 
-      // Numbered list (1. 2. etc.)
       const olMatch = trimmed.match(/^\d+\.\s+(.+)$/);
       if (olMatch) {
         if (inUl) {
@@ -247,7 +408,6 @@
         continue;
       }
 
-      // Regular paragraph
       closeLists();
       output.push(`<p>${formatInlineMarkdown(escapeHtml(line))}</p>`);
     }
@@ -318,18 +478,19 @@
 
   function renderSidebar() {
     chatHistoryList.innerHTML = '';
+    const unitChats = getUnitChats();
 
-    if (chats.length === 0) {
+    if (unitChats.length === 0) {
       const empty = document.createElement('div');
       empty.style.padding = '12px 10px';
       empty.style.fontSize = '0.82rem';
       empty.style.color = 'var(--text-muted)';
-      empty.textContent = 'No saved chats yet.';
+      empty.textContent = 'No saved chats for this unit yet.';
       chatHistoryList.appendChild(empty);
       return;
     }
 
-    chats.forEach((chat) => {
+    unitChats.forEach((chat) => {
       const item = document.createElement('div');
       item.className = `chat-history-item ${chat.id === currentChatId ? 'active' : ''}`;
 
@@ -368,7 +529,6 @@
       return;
     }
 
-    // Show welcome card banner above messages only when chat has just the initial greeting
     const hasUserMessage = chat.messages.some((m) => m.role === 'user');
     if (!hasUserMessage) {
       welcomeScreen.classList.remove('hidden');
@@ -400,7 +560,6 @@
       bubble.className = `assistant-bubble ${msg.isError ? 'error-bubble' : ''}`;
       bubble.appendChild(renderMarkdown(msg.content));
 
-      // Action Bar
       const actionBar = document.createElement('div');
       actionBar.className = 'message-actions';
 
@@ -465,7 +624,7 @@
     const chat = getCurrentChat();
     if (chat && chat.messages[msgIndex]) {
       chat.messages[msgIndex].feedback = feedback;
-      saveChats();
+      saveChatsByUnit();
     }
   }
 
@@ -505,8 +664,9 @@
   // --- Chat Lifecycle ---
   function startNewChat(closeSidebar = true) {
     if (isGenerating) return;
+    const unitName = session?.selectedUnit || 'General Studies';
+    const unitChats = getUnitChats();
 
-    // Reuse an existing untouched greeting-only chat if one is currently active
     const activeChat = getCurrentChat();
     if (activeChat && activeChat.messages.length === 1 && activeChat.messages[0].isGreeting) {
       renderSidebar();
@@ -518,11 +678,11 @@
 
     const newChat = {
       id: 'chat_' + Date.now(),
-      title: 'New Study Session',
+      title: `${unitName} Session`,
       messages: [
         {
           role: 'assistant',
-          content: NEW_CHAT_GREETING,
+          content: buildUnitGreeting(unitName),
           time: formatTime(),
           feedback: null,
           isGreeting: true,
@@ -530,9 +690,9 @@
       ],
     };
 
-    chats.unshift(newChat);
+    unitChats.unshift(newChat);
     currentChatId = newChat.id;
-    saveChats();
+    saveChatsByUnit();
 
     renderSidebar();
     renderMessages();
@@ -551,11 +711,15 @@
   }
 
   function deleteChat(chatId) {
-    chats = chats.filter((c) => c.id !== chatId);
-    saveChats();
+    const unit = session?.selectedUnit || 'General Studies';
+    chatsByUnit[unit] = getUnitChats().filter((c) => c.id !== chatId);
+    saveChatsByUnit();
+
     if (currentChatId === chatId) {
-      currentChatId = chats.length > 0 ? chats[0].id : null;
+      const remaining = getUnitChats();
+      currentChatId = remaining.length > 0 ? remaining[0].id : null;
     }
+
     if (!currentChatId) {
       startNewChat(false);
     } else {
@@ -572,17 +736,17 @@
     if (!text) return;
 
     let chat = getCurrentChat();
+    const unitChats = getUnitChats();
     if (!chat) {
       chat = {
         id: 'chat_' + Date.now(),
-        title: 'New Study Session',
+        title: 'Study Session',
         messages: [],
       };
-      chats.unshift(chat);
+      unitChats.unshift(chat);
       currentChatId = chat.id;
     }
 
-    // Set chat title from the first real user prompt
     const hasPriorUserMsg = chat.messages.some((m) => m.role === 'user');
     if (!hasPriorUserMsg) {
       chat.title = text.length > 36 ? text.slice(0, 36) + '...' : text;
@@ -594,7 +758,7 @@
       time: formatTime(),
     };
     chat.messages.push(userMsg);
-    saveChats();
+    saveChatsByUnit();
 
     messageInput.value = '';
     autoResizeInput();
@@ -616,7 +780,10 @@
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: apiMessages }),
+        body: JSON.stringify({
+          messages: apiMessages,
+          selectedUnit: session?.selectedUnit || 'General Studies',
+        }),
       });
 
       const data = await response.json().catch(() => ({}));
@@ -632,7 +799,7 @@
           feedback: null,
         };
         chat.messages.push(errMsg);
-        saveChats();
+        saveChatsByUnit();
         appendMessageToDOM(errMsg, chat.messages.length - 1);
       } else {
         const aiMsg = {
@@ -642,7 +809,7 @@
           feedback: null,
         };
         chat.messages.push(aiMsg);
-        saveChats();
+        saveChatsByUnit();
         appendMessageToDOM(aiMsg, chat.messages.length - 1);
       }
     } catch (err) {
@@ -655,7 +822,7 @@
         feedback: null,
       };
       chat.messages.push(networkErrMsg);
-      saveChats();
+      saveChatsByUnit();
       appendMessageToDOM(networkErrMsg, chat.messages.length - 1);
     } finally {
       isGenerating = false;
@@ -684,7 +851,87 @@
     sidebarOverlay.classList.remove('active');
   }
 
-  // Event Listeners
+  // --- Event Listeners ---
+  studentPasswordInput.addEventListener('input', updatePasswordMeter);
+
+  togglePasswordBtn.addEventListener('click', () => {
+    const isPass = studentPasswordInput.type === 'password';
+    studentPasswordInput.type = isPass ? 'text' : 'password';
+    togglePasswordBtn.innerHTML = isPass
+      ? '<i class="fa-regular fa-eye-slash"></i>'
+      : '<i class="fa-regular fa-eye"></i>';
+  });
+
+  authForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    clearAuthError();
+
+    const email = studentEmailInput.value.trim();
+    const password = studentPasswordInput.value;
+    const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
+    if (!emailValid) {
+      showAuthError('Please enter a valid student email address.');
+      studentEmailInput.focus();
+      return;
+    }
+
+    const { isStrong } = evaluatePassword(password);
+    if (!isStrong) {
+      showAuthError(
+        'Please create a strong password with at least 8 characters, including uppercase, lowercase, a number, and a special symbol.'
+      );
+      studentPasswordInput.focus();
+      return;
+    }
+
+    session = {
+      email,
+      passwordSet: true,
+      selectedUnit: session?.email === email ? session.selectedUnit || null : null,
+    };
+    saveSession();
+    syncViewState();
+  });
+
+  unitsGrid.querySelectorAll('.unit-option-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const unitVal = btn.getAttribute('data-unit');
+      if (unitVal === 'OTHER') {
+        customUnitBox.classList.remove('hidden');
+        customUnitInput.focus();
+      } else if (unitVal) {
+        selectUnitAndOpenChat(unitVal);
+      }
+    });
+  });
+
+  confirmCustomUnitBtn.addEventListener('click', () => {
+    const customName = customUnitInput.value.trim();
+    if (!customName) {
+      customUnitInput.focus();
+      return;
+    }
+    selectUnitAndOpenChat(customName);
+  });
+
+  customUnitInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      confirmCustomUnitBtn.click();
+    }
+  });
+
+  switchUnitBtn.addEventListener('click', () => {
+    if (isGenerating || !session) return;
+    session.selectedUnit = null;
+    saveSession();
+    syncViewState();
+  });
+
+  signOutBtn.addEventListener('click', signOutUser);
+  sidebarSignOutBtn.addEventListener('click', signOutUser);
+
   messageInput.addEventListener('input', () => {
     autoResizeInput();
     updateSendButtonState();
