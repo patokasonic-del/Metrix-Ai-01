@@ -8,40 +8,12 @@ function normalizeKenyanPhone(rawPhone) {
   return null;
 }
 
-function getDarajaTimestamp() {
-  const now = new Date();
-  const eastAfricaTime = new Date(now.getTime() + 3 * 60 * 60 * 1000);
-  const pad = (n) => String(n).padStart(2, '0');
-  return (
-    `${eastAfricaTime.getUTCFullYear()}` +
-    `${pad(eastAfricaTime.getUTCMonth() + 1)}` +
-    `${pad(eastAfricaTime.getUTCDate())}` +
-    `${pad(eastAfricaTime.getUTCHours())}` +
-    `${pad(eastAfricaTime.getUTCMinutes())}` +
-    `${pad(eastAfricaTime.getUTCSeconds())}`
-  );
-}
-
-function getDarajaBaseUrl() {
-  return (process.env.MPESA_ENV || 'sandbox').trim().toLowerCase() === 'production'
-    ? 'https://api.safaricom.co.ke'
-    : 'https://sandbox.safaricom.co.ke';
-}
-
-async function getDarajaAccessToken(baseUrl, consumerKey, consumerSecret) {
-  const credentials = Buffer.from(`${consumerKey}:${consumerSecret}`).toString('base64');
-  const tokenRes = await fetch(`${baseUrl}/oauth/v1/generate?grant_type=client_credentials`, {
-    method: 'GET',
-    headers: {
-      Authorization: `Basic ${credentials}`,
-    },
-  });
-
-  const tokenData = await tokenRes.json().catch(() => null);
-  if (!tokenRes.ok || !tokenData?.access_token) {
-    throw new Error(tokenData?.error_description || 'Failed to get M-Pesa access token.');
+function getIntaSendBaseUrl() {
+  const env = (process.env.INTASEND_ENV || '').trim().toLowerCase();
+  if (env === 'sandbox') {
+    return 'https://sandbox.intasend.com';
   }
-  return tokenData.access_token;
+  return 'https://api.intasend.com';
 }
 
 export default async function handler(req, res) {
@@ -61,78 +33,74 @@ export default async function handler(req, res) {
       });
     }
 
-    const demoMode = (process.env.MPESA_DEMO_MODE || '').trim().toLowerCase() === 'true';
-    const consumerKey = (process.env.MPESA_CONSUMER_KEY || '').trim();
-    const consumerSecret = (process.env.MPESA_CONSUMER_SECRET || '').trim();
-    const shortcode = (process.env.MPESA_SHORTCODE || '').trim();
-    const passkey = (process.env.MPESA_PASSKEY || '').trim();
-    const callbackUrl = (process.env.MPESA_CALLBACK_URL || '').trim();
+    const secretKey = (process.env.INTASEND_SECRET_KEY || '').trim();
+    const demoMode = (process.env.INTASEND_DEMO_MODE || '').trim().toLowerCase() === 'true';
 
-    // Allow smooth testing on Vercel when MPESA_DEMO_MODE=true or Daraja keys aren't set yet
-    if (demoMode || !consumerKey || !consumerSecret || !shortcode || !passkey) {
-      const mockCheckoutId = `ws_CO_DEMO_${crypto.randomBytes(6).toString('hex')}`;
+    // Optional demo fallback when INTASEND_DEMO_MODE=true or INTASEND_SECRET_KEY is not set yet
+    if (demoMode || !secretKey) {
       return res.status(200).json({
-        checkoutRequestId: mockCheckoutId,
+        checkoutRequestId: `demo_inv_${crypto.randomBytes(6).toString('hex')}`,
         phone,
         email,
         amount: 10,
         message:
-          '10 KES STK Push request prepared (Demo Mode). Click "I Have Paid — Verify Payment" to activate your 24-hour access pass.',
+          '10 KES IntaSend STK Push prepared (Demo Mode). Click "I Have Paid — Verify Payment" to activate your 24-hour pass.',
       });
     }
 
-    const baseUrl = getDarajaBaseUrl();
-    const accessToken = await getDarajaAccessToken(baseUrl, consumerKey, consumerSecret);
-    const timestamp = getDarajaTimestamp();
-    const password = Buffer.from(`${shortcode}${passkey}${timestamp}`).toString('base64');
-    const resolvedCallbackUrl =
-      callbackUrl ||
-      (req.headers.host ? `https://${req.headers.host}/api/verify-payment` : 'https://example.com/api/verify-payment');
+    const baseUrl = getIntaSendBaseUrl();
+    const apiRef = `metrix-24h-${Date.now()}`;
 
-    const stkRes = await fetch(`${baseUrl}/mpesa/stkpush/v1/processrequest`, {
+    const payload = {
+      amount: 10,
+      phone_number: phone,
+      api_ref: apiRef,
+    };
+    if (email) {
+      payload.email = email;
+    }
+
+    const response = await fetch(`${baseUrl}/api/v1/payment/mpesa-stk-push/`, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        Authorization: `Bearer ${secretKey}`,
         'Content-Type': 'application/json',
+        Accept: 'application/json',
       },
-      body: JSON.stringify({
-        BusinessShortCode: shortcode,
-        Password: password,
-        Timestamp: timestamp,
-        TransactionType: 'CustomerPayBillOnline',
-        Amount: 10,
-        PartyA: phone,
-        PartyB: shortcode,
-        PhoneNumber: phone,
-        CallBackURL: resolvedCallbackUrl,
-        AccountReference: 'MetrixAI01',
-        TransactionDesc: 'Metrix AI 01 24h Access (10 KES)',
-      }),
+      body: JSON.stringify(payload),
     });
 
-    const stkData = await stkRes.json().catch(() => null);
-    if (!stkRes.ok || stkData?.ResponseCode !== '0') {
-      return res.status(400).json({
+    const data = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      return res.status(response.status).json({
         error:
-          stkData?.errorMessage ||
-          stkData?.ResponseDescription ||
-          'Failed to send the 10 KES M-Pesa STK Push prompt.',
+          data?.errors?.[0]?.detail ||
+          data?.detail ||
+          data?.message ||
+          'Failed to send the 10 KES M-Pesa STK Push via IntaSend.',
       });
     }
 
+    const checkoutId =
+      data?.invoice?.invoice_id ||
+      data?.id ||
+      apiRef;
+
     return res.status(200).json({
-      checkoutRequestId: stkData.CheckoutRequestID,
-      merchantRequestId: stkData.MerchantRequestID,
+      checkoutRequestId: checkoutId,
+      invoiceId: data?.invoice?.invoice_id || null,
+      apiRef,
       phone,
       email,
       amount: 10,
       message:
-        'A 10 KES M-Pesa prompt has been sent to your phone. Enter your M-Pesa PIN, then click "I Have Paid — Verify Payment".',
+        'A 10 KES M-Pesa STK Push prompt has been sent to your phone via IntaSend. Enter your PIN, then click "I Have Paid — Verify Payment".',
     });
   } catch (error) {
-    console.error('Metrix AI 01 /api/pay error:', error);
+    console.error('Metrix AI 01 IntaSend /api/pay error:', error);
     return res.status(500).json({
-      error: error?.message || 'Unexpected error while initiating the 10 KES payment.',
+      error: error?.message || 'Unexpected error while initiating 10 KES payment with IntaSend.',
     });
   }
 }
