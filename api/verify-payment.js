@@ -1,84 +1,76 @@
-function getIntaSendBaseUrl() {
-  const env = (process.env.INTASEND_ENV || '').trim().toLowerCase();
-  return env === 'sandbox' ? 'https://sandbox.intasend.com' : 'https://api.intasend.com';
-}
+const PASS_DURATION_MS = 24 * 60 * 60 * 1000;
+const INTASEND_STATUS_URL = 'https://api.intasend.com/api/v1/payment/status/';
 
-function getSupabaseConfig() {
-  const supabaseUrl = (process.env.SUPABASE_URL || '').trim().replace(/\/$/, '');
-  const serviceRoleKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
-  return supabaseUrl && serviceRoleKey ? { supabaseUrl, serviceRoleKey } : null;
-}
+async function supabaseRequest(path, options = {}) {
+  const supabaseUrl = (process.env.SUPABASE_URL || '').trim().replace(/\/+$/, '');
+  const serviceKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
 
-async function getExistingPassFromSupabase({ checkoutRequestId, email }) {
-  const cfg = getSupabaseConfig();
-  if (!cfg) return null;
-
-  const now = Date.now();
-
-  if (checkoutRequestId) {
-    const res = await fetch(
-      `${cfg.supabaseUrl}/rest/v1/transactions?checkout_request_id=eq.${encodeURIComponent(checkoutRequestId)}&select=*&limit=1`,
-      {
-        headers: {
-          apikey: cfg.serviceRoleKey,
-          Authorization: `Bearer ${cfg.serviceRoleKey}`,
-        },
-      }
+  if (!supabaseUrl || !serviceKey) {
+    throw new Error(
+      'Server configuration error: SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is missing in Vercel.'
     );
-    const rows = await res.json().catch(() => []);
-    if (Array.isArray(rows) && rows[0]?.status === 'COMPLETE' && Number(rows[0]?.expires_at) > now) {
-      return rows[0];
-    }
   }
 
-  if (email) {
-    const res = await fetch(
-      `${cfg.supabaseUrl}/rest/v1/transactions?student_email=eq.${encodeURIComponent(email)}&status=eq.COMPLETE&expires_at=gt.${now}&order=expires_at.desc&limit=1`,
-      {
-        headers: {
-          apikey: cfg.serviceRoleKey,
-          Authorization: `Bearer ${cfg.serviceRoleKey}`,
-        },
-      }
-    );
-    const rows = await res.json().catch(() => []);
-    if (Array.isArray(rows) && rows[0]) {
-      return rows[0];
-    }
-  }
-
-  return null;
-}
-
-async function updateTransactionInSupabase({ checkoutRequestId, email, phone, status, expiresAt }) {
-  const cfg = getSupabaseConfig();
-  if (!cfg || !checkoutRequestId) return;
-
-  const payload = {
-    checkout_request_id: checkoutRequestId,
-    student_email: email || null,
-    phone: phone || 'unknown',
-    amount: 10,
-    status,
-    expires_at: expiresAt || null,
-    updated_at: new Date().toISOString(),
+  const headers = {
+    apikey: serviceKey,
+    'Content-Type': 'application/json',
+    Prefer: 'return=representation',
+    ...(options.headers || {}),
   };
 
-  const res = await fetch(`${cfg.supabaseUrl}/rest/v1/transactions`, {
+  if (!serviceKey.startsWith('sb_secret_')) {
+    headers.Authorization = `Bearer ${serviceKey}`;
+  }
+
+  const response = await fetch(`${supabaseUrl}/rest/v1/${path}`, {
+    ...options,
+    headers,
+  });
+
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(data?.message || data?.error || `Supabase error (${response.status})`);
+  }
+  return data;
+}
+
+async function checkIntaSendPaymentStatus({ invoiceId, checkoutId }) {
+  const secretKey = (
+    process.env.INTASEND_SECRET_KEY ||
+    process.env.INTASEND_PRIVATE_KEY ||
+    ''
+  ).trim();
+
+  if (!secretKey) {
+    throw new Error(
+      'Server configuration error: INTASEND_SECRET_KEY is missing in Vercel environment variables.'
+    );
+  }
+
+  const payload = {};
+  if (invoiceId) payload.invoice_id = invoiceId;
+  if (checkoutId) payload.checkout_id = checkoutId;
+
+  const response = await fetch(INTASEND_STATUS_URL, {
     method: 'POST',
     headers: {
-      apikey: cfg.serviceRoleKey,
-      Authorization: `Bearer ${cfg.serviceRoleKey}`,
+      Authorization: `Bearer ${secretKey}`,
       'Content-Type': 'application/json',
-      Prefer: 'resolution=merge-duplicates,return=minimal',
     },
     body: JSON.stringify(payload),
   });
 
-  if (!res.ok) {
-    const errText = await res.text().catch(() => '');
-    console.error('Supabase update transaction error:', res.status, errText);
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    const msg =
+      data?.detail ||
+      data?.message ||
+      data?.error ||
+      `IntaSend status check failed (${response.status}).`;
+    throw new Error(msg);
   }
+
+  return data;
 }
 
 export default async function handler(req, res) {
@@ -89,123 +81,83 @@ export default async function handler(req, res) {
 
   try {
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
-    const checkoutRequestId = String(body?.checkoutRequestId || '').trim();
     const email = String(body?.email || '').trim().toLowerCase();
-    const phone = String(body?.phone || '').trim();
-    const expiresAt = Date.now() + 24 * 60 * 60 * 1000;
+    const incomingCheckoutId = String(
+      body?.checkoutRequestId || body?.checkout_id || ''
+    ).trim();
+    const invoiceId = String(body?.invoiceId || body?.invoice_id || '').trim();
 
-    // Check if Supabase already has a verified active 24h pass
-    const existingPass = await getExistingPassFromSupabase({ checkoutRequestId, email });
-    if (existingPass) {
-      return res.status(200).json({
-        paid: true,
-        amount: 10,
-        expiresAt: Number(existingPass.expires_at),
-        checkoutRequestId: existingPass.checkout_request_id,
-        message: 'Active 24-hour access pass confirmed from database!',
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ error: 'Valid student email is required to verify payment.' });
+    }
+
+    // Look up student row in Supabase so we can fall back to their saved last_checkout_id
+    const rows = await supabaseRequest(
+      `students?email=eq.${encodeURIComponent(email)}&select=*`
+    );
+    const student = Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
+
+    if (!student) {
+      return res.status(404).json({ error: 'Student account not found in Supabase.' });
+    }
+
+    const checkoutId = incomingCheckoutId || String(student.last_checkout_id || '').trim();
+
+    if (!invoiceId && !checkoutId) {
+      return res.status(400).json({
+        error: 'No IntaSend checkout or invoice reference found. Send the 10 KES prompt first.',
       });
     }
 
-    const secretKey = (process.env.INTASEND_SECRET_KEY || '').trim();
-    const demoMode = (process.env.INTASEND_DEMO_MODE || '').trim().toLowerCase() === 'true';
+    const statusData = await checkIntaSendPaymentStatus({ invoiceId, checkoutId });
+    const invoiceObj =
+      statusData?.invoice && typeof statusData.invoice === 'object'
+        ? statusData.invoice
+        : statusData;
 
-    // Demo fallback when INTASEND_DEMO_MODE=true or INTASEND_SECRET_KEY is not set
-    if (demoMode || !secretKey) {
-      const resolvedId = checkoutRequestId || `DEMO_INTASEND_${Date.now()}`;
-      await updateTransactionInSupabase({
-        checkoutRequestId: resolvedId,
-        email,
-        phone,
-        status: 'COMPLETE',
-        expiresAt,
-      });
+    const state = String(invoiceObj?.state || statusData?.state || '').trim().toUpperCase();
+    const resolvedId = String(
+      invoiceObj?.invoice_id || statusData?.invoice_id || checkoutId || invoiceId || ''
+    ).trim();
 
-      return res.status(200).json({
-        paid: true,
-        amount: 10,
-        expiresAt,
-        checkoutRequestId: resolvedId,
-        message: '10 KES payment confirmed and recorded. 24-hour access activated.',
-      });
-    }
-
-    if (!checkoutRequestId) {
+    if (state !== 'COMPLETE') {
+      const reason =
+        invoiceObj?.failed_reason ||
+        statusData?.failed_reason ||
+        `Current payment status is ${state || 'PENDING'}.`;
       return res.status(400).json({
         paid: false,
-        error: 'Missing payment reference. Click "Pay 10 KES for 24h Access" first.',
+        state: state || 'PENDING',
+        error: `Payment not completed yet (${reason}). Complete the 10 KES prompt and try again.`,
       });
     }
 
-    const baseUrl = getIntaSendBaseUrl();
+    const passExpiresAt = Date.now() + PASS_DURATION_MS;
+    const passExpiresAtIso = new Date(passExpiresAt).toISOString();
 
-    const statusRes = await fetch(`${baseUrl}/api/v1/payment/status/`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${secretKey}`,
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      },
-      body: JSON.stringify({
-        invoice_id: checkoutRequestId,
-      }),
-    });
-
-    const statusData = await statusRes.json().catch(() => null);
-
-    if (!statusRes.ok) {
-      return res.status(statusRes.status).json({
-        paid: false,
-        error:
-          statusData?.errors?.[0]?.detail ||
-          statusData?.detail ||
-          'Could not check IntaSend payment status.',
-      });
-    }
-
-    const state = String(statusData?.invoice?.state || statusData?.state || '').toUpperCase();
-
-    if (state === 'COMPLETE' || state === 'COMPLETED') {
-      await updateTransactionInSupabase({
-        checkoutRequestId,
-        email,
-        phone,
-        status: 'COMPLETE',
-        expiresAt,
-      });
-
-      return res.status(200).json({
-        paid: true,
-        amount: 10,
-        expiresAt,
-        checkoutRequestId,
-        message: '10 KES payment verified via IntaSend and recorded! 24-hour access unlocked.',
-      });
-    }
-
-    if (state === 'FAILED' || state === 'CANCELED' || state === 'CANCELLED') {
-      await updateTransactionInSupabase({
-        checkoutRequestId,
-        email,
-        phone,
-        status: 'FAILED',
-        expiresAt: null,
-      });
-
-      return res.status(200).json({
-        paid: false,
-        error: 'The M-Pesa payment was canceled or failed. Please try again.',
-      });
-    }
+    await supabaseRequest(
+      `students?email=eq.${encodeURIComponent(email)}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({
+          pass_expires_at: passExpiresAtIso,
+          last_checkout_id: resolvedId || checkoutId || null,
+          updated_at: new Date().toISOString(),
+        }),
+      }
+    );
 
     return res.status(200).json({
-      paid: false,
-      error: `Payment status is currently ${state || 'PENDING'}. Complete the prompt on your phone and click verify again.`,
+      paid: true,
+      state: 'COMPLETE',
+      passExpiresAt,
+      checkoutRequestId: resolvedId || checkoutId || '',
     });
   } catch (error) {
-    console.error('Metrix AI 01 IntaSend /api/verify-payment error:', error);
+    console.error('Matrix AI /api/verify-payment error:', error);
     return res.status(500).json({
       paid: false,
-      error: error?.message || 'Error while verifying payment with IntaSend.',
+      error: error?.message || 'Failed to verify IntaSend payment.',
     });
   }
 }
