@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Metrix AI 01 — Student Portal & Study Assistant</title>
+  <title>Matrix AI — Student Portal & Study Assistant</title>
   <!-- Google Fonts: Inter & JetBrains Mono -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -12,44 +12,44 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
   <style>
     :root {
-      /* Futuristic Cool Color Palette */
+      /* Dark Futuristic Palette (#030712 + Cyan / Electric Blue) */
       --accent-cyan: #06b6d4;
-      --accent-blue: #2563eb;
-      --accent-indigo: #4f46e5;
-      --accent-gradient: linear-gradient(135deg, #06b6d4 0%, #2563eb 55%, #4f46e5 100%);
-      --accent-glow: rgba(6, 182, 212, 0.25);
+      --accent-blue: #3b82f6;
+      --accent-electric: #0ea5e9;
+      --accent-gradient: linear-gradient(135deg, #06b6d4 0%, #3b82f6 55%, #2563eb 100%);
+      --accent-glow: rgba(6, 182, 212, 0.35);
 
-      /* Icy / Frost Surface Palette */
-      --bg-main: #f0f6fc;
-      --bg-gradient: radial-gradient(circle at top right, #e0f2fe 0%, #f0f6fc 45%, #eef2ff 100%);
-      --bg-sidebar: rgba(248, 251, 255, 0.9);
-      --bg-card: rgba(255, 255, 255, 0.88);
-      --bg-card-hover: #ffffff;
-      --bg-topbar: rgba(240, 246, 252, 0.88);
-      --bg-user-bubble: linear-gradient(135deg, #2563eb 0%, #4f46e5 100%);
-      --bg-input: rgba(255, 255, 255, 0.96);
+      /* Dark Surfaces */
+      --bg-main: #030712;
+      --bg-gradient: radial-gradient(circle at top right, #082f49 0%, #030712 45%, #020617 100%);
+      --bg-sidebar: rgba(10, 16, 31, 0.94);
+      --bg-card: rgba(15, 23, 42, 0.85);
+      --bg-card-hover: rgba(30, 41, 59, 0.92);
+      --bg-topbar: rgba(3, 7, 18, 0.88);
+      --bg-user-bubble: linear-gradient(135deg, #0284c7 0%, #2563eb 100%);
+      --bg-input: rgba(15, 23, 42, 0.96);
 
       /* Borders & Shadows */
-      --border-frost: rgba(148, 163, 184, 0.25);
+      --border-frost: rgba(148, 163, 184, 0.16);
       --border-accent: rgba(6, 182, 212, 0.45);
-      --shadow-sm: 0 2px 8px rgba(15, 23, 42, 0.04);
-      --shadow-md: 0 8px 24px rgba(37, 99, 235, 0.08);
-      --shadow-lg: 0 18px 44px rgba(15, 23, 42, 0.12);
-      --shadow-glow: 0 4px 16px rgba(6, 182, 212, 0.28);
+      --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.35);
+      --shadow-md: 0 8px 28px rgba(0, 0, 0, 0.45);
+      --shadow-lg: 0 20px 50px rgba(0, 0, 0, 0.65);
+      --shadow-glow: 0 4px 18px rgba(6, 182, 212, 0.32);
 
       /* Typography Colors */
-      --text-primary: #0f172a;
-      --text-secondary: #475569;
-      --text-muted: #64748b;
+      --text-primary: #f8fafc;
+      --text-secondary: #cbd5e1;
+      --text-muted: #94a3b8;
       --text-on-accent: #ffffff;
 
-      /* Dark Code Block Palette */
-      --code-bg: #0b1120;
-      --code-header-bg: #1e293b;
-      --code-border: #1e293b;
+      /* Code Block Palette */
+      --code-bg: #020617;
+      --code-header-bg: #0f172a;
+      --code-border: rgba(56, 189, 248, 0.22);
       --code-text: #e2e8f0;
-      --inline-code-bg: rgba(37, 99, 235, 0.1);
-      --inline-code-text: #1d4ed8;
+      --inline-code-bg: rgba(6, 182, 212, 0.14);
+      --inline-code-text: #38bdf8;
 
       /* Layout */
       --sidebar-width: 272px;
@@ -88,7 +88,7 @@
       color: #ffffff;
       font-weight: 800;
       flex-shrink: 0;
-      box-shadow: 0 0 0 2px #ffffff, 0 0 14px var(--accent-glow);
+      box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.45), 0 0 16px var(--accent-glow);
     }
 
     .avatar-wrapper img {
@@ -184,7 +184,7 @@
       display: block;
       font-size: 0.84rem;
       font-weight: 600;
-      color: var(--text-primary);
+      color: var(--text-secondary);
       margin-bottom: 6px;
     }
 
@@ -199,7 +199,7 @@
       padding: 12px 42px 12px 14px;
       border-radius: 12px;
       border: 1.5px solid var(--border-frost);
-      background: #ffffff;
+      background: rgba(2, 6, 23, 0.85);
       font-family: inherit;
       font-size: 0.94rem;
       color: var(--text-primary);
@@ -209,7 +209,7 @@
 
     .form-input:focus {
       border-color: var(--accent-cyan);
-      box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.15);
+      box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.18);
     }
 
     .toggle-pass-btn {
@@ -224,13 +224,13 @@
     }
 
     .toggle-pass-btn:hover {
-      color: var(--accent-blue);
+      color: var(--accent-cyan);
     }
 
     .strength-meter {
       height: 6px;
       width: 100%;
-      background: #e2e8f0;
+      background: #1e293b;
       border-radius: 999px;
       overflow: hidden;
       margin-top: 8px;
@@ -250,9 +250,9 @@
     }
 
     .auth-error {
-      background: rgba(239, 68, 68, 0.1);
-      border: 1px solid rgba(239, 68, 68, 0.35);
-      color: #b91c1c;
+      background: rgba(239, 68, 68, 0.14);
+      border: 1px solid rgba(239, 68, 68, 0.4);
+      color: #fca5a5;
       padding: 10px 12px;
       border-radius: 10px;
       font-size: 0.84rem;
@@ -280,11 +280,11 @@
 
     .primary-btn:hover:not(:disabled) {
       transform: translateY(-1px);
-      box-shadow: 0 8px 22px rgba(37, 99, 235, 0.32);
+      box-shadow: 0 8px 24px rgba(6, 182, 212, 0.4);
     }
 
     .primary-btn:disabled {
-      opacity: 0.65;
+      opacity: 0.6;
       cursor: not-allowed;
     }
 
@@ -293,8 +293,8 @@
       padding: 11px 16px;
       border-radius: 12px;
       border: 1.5px solid var(--border-accent);
-      background: #ffffff;
-      color: var(--accent-blue);
+      background: rgba(15, 23, 42, 0.9);
+      color: var(--accent-cyan);
       font-family: inherit;
       font-size: 0.88rem;
       font-weight: 700;
@@ -307,7 +307,7 @@
     }
 
     .secondary-btn:hover:not(:disabled) {
-      background: rgba(6, 182, 212, 0.08);
+      background: rgba(6, 182, 212, 0.14);
     }
 
     /* Six Unit Selection Buttons */
@@ -316,8 +316,8 @@
       align-items: center;
       justify-content: space-between;
       gap: 10px;
-      background: rgba(6, 182, 212, 0.08);
-      border: 1px solid rgba(6, 182, 212, 0.25);
+      background: rgba(6, 182, 212, 0.1);
+      border: 1px solid rgba(6, 182, 212, 0.28);
       border-radius: 12px;
       padding: 10px 14px;
       margin-bottom: 18px;
@@ -336,7 +336,7 @@
     .link-btn {
       background: transparent;
       border: none;
-      color: var(--accent-blue);
+      color: var(--accent-cyan);
       font-family: inherit;
       font-size: 0.82rem;
       font-weight: 600;
@@ -356,7 +356,7 @@
     }
 
     .unit-option-btn {
-      background: #ffffff;
+      background: rgba(2, 6, 23, 0.72);
       border: 1.5px solid var(--border-frost);
       border-radius: 14px;
       padding: 14px;
@@ -371,9 +371,9 @@
 
     .unit-option-btn:hover {
       border-color: var(--accent-cyan);
-      background: #f8fdff;
+      background: rgba(15, 23, 42, 0.95);
       transform: translateY(-2px);
-      box-shadow: var(--shadow-md);
+      box-shadow: var(--shadow-glow);
     }
 
     .unit-option-top {
@@ -386,7 +386,7 @@
     }
 
     .unit-option-top i {
-      color: var(--accent-blue);
+      color: var(--accent-cyan);
       font-size: 0.95rem;
     }
 
@@ -397,7 +397,7 @@
     }
 
     .custom-unit-box {
-      background: rgba(248, 251, 255, 0.95);
+      background: rgba(2, 6, 23, 0.85);
       border: 1.5px solid var(--border-accent);
       border-radius: 14px;
       padding: 14px;
@@ -423,7 +423,7 @@
       display: none;
       position: fixed;
       inset: 0;
-      background: rgba(15, 23, 42, 0.45);
+      background: rgba(0, 0, 0, 0.65);
       backdrop-filter: blur(3px);
       z-index: 90;
     }
@@ -472,7 +472,7 @@
 
     .new-chat-btn:hover {
       transform: translateY(-1px);
-      box-shadow: 0 6px 20px rgba(37, 99, 235, 0.35);
+      box-shadow: 0 6px 22px rgba(6, 182, 212, 0.42);
     }
 
     .sidebar-section-label {
@@ -509,14 +509,14 @@
     }
 
     .chat-history-item:hover {
-      background: rgba(255, 255, 255, 0.8);
+      background: rgba(30, 41, 59, 0.65);
       color: var(--text-primary);
       border-color: var(--border-frost);
     }
 
     .chat-history-item.active {
-      background: #ffffff;
-      color: var(--accent-blue);
+      background: rgba(15, 23, 42, 0.95);
+      color: var(--accent-cyan);
       border-color: var(--border-accent);
       box-shadow: var(--shadow-sm);
       font-weight: 600;
@@ -561,8 +561,8 @@
     }
 
     .delete-chat-btn:hover {
-      color: #ef4444;
-      background: rgba(239, 68, 68, 0.1);
+      color: #f87171;
+      background: rgba(239, 68, 68, 0.14);
     }
 
     .sidebar-footer {
@@ -583,7 +583,7 @@
     }
 
     .sidebar-footer i {
-      color: var(--accent-indigo);
+      color: var(--accent-cyan);
     }
 
     /* Main Content Area */
@@ -608,23 +608,23 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 0 24px;
+      padding: 0 20px;
       z-index: 50;
       flex-shrink: 0;
-      gap: 12px;
+      gap: 10px;
     }
 
     .top-bar-left {
       display: flex;
       align-items: center;
-      gap: 14px;
+      gap: 12px;
       min-width: 0;
     }
 
     .top-bar-right {
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 8px;
       flex-shrink: 0;
     }
 
@@ -644,9 +644,9 @@
     }
 
     .topbar-avatar {
-      width: 42px;
-      height: 42px;
-      font-size: 1.15rem;
+      width: 40px;
+      height: 40px;
+      font-size: 1.1rem;
     }
 
     .brand-info {
@@ -657,7 +657,7 @@
     }
 
     .brand-name {
-      font-size: 1.32rem;
+      font-size: 1.28rem;
       font-weight: 800;
       letter-spacing: -0.02em;
       background: var(--accent-gradient);
@@ -672,11 +672,11 @@
       gap: 6px;
       padding: 4px 10px;
       border-radius: 999px;
-      background: rgba(6, 182, 212, 0.12);
-      border: 1px solid rgba(6, 182, 212, 0.3);
-      font-size: 0.75rem;
+      background: rgba(6, 182, 212, 0.14);
+      border: 1px solid rgba(6, 182, 212, 0.35);
+      font-size: 0.74rem;
       font-weight: 600;
-      color: #0e7490;
+      color: #38bdf8;
       flex-shrink: 0;
     }
 
@@ -700,15 +700,43 @@
       gap: 6px;
       padding: 6px 12px;
       border-radius: 999px;
-      background: #ffffff;
+      background: rgba(15, 23, 42, 0.9);
       border: 1px solid var(--border-accent);
       font-size: 0.78rem;
       font-weight: 600;
-      color: var(--accent-blue);
-      max-width: 210px;
+      color: var(--accent-cyan);
+      max-width: 190px;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+    }
+
+    .voice-reply-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-frost);
+      color: var(--text-secondary);
+      font-family: inherit;
+      font-size: 0.78rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .voice-reply-btn:hover {
+      border-color: var(--accent-cyan);
+      color: var(--text-primary);
+    }
+
+    .voice-reply-btn.active {
+      background: rgba(6, 182, 212, 0.18);
+      border-color: var(--accent-cyan);
+      color: #38bdf8;
+      box-shadow: 0 0 12px rgba(6, 182, 212, 0.25);
     }
 
     .switch-unit-btn {
@@ -726,7 +754,7 @@
 
     .switch-unit-btn:hover {
       border-color: var(--accent-cyan);
-      color: var(--accent-blue);
+      color: var(--accent-cyan);
     }
 
     /* Chat Scroll Area */
@@ -750,20 +778,20 @@
       align-items: center;
       justify-content: center;
       text-align: center;
-      padding: 20px 16px 18px;
+      padding: 22px 16px 18px;
       animation: fadeIn 0.35s ease;
     }
 
     .welcome-avatar {
-      width: 88px;
-      height: 88px;
-      font-size: 2.3rem;
+      width: 84px;
+      height: 84px;
+      font-size: 2.2rem;
       margin-bottom: 16px;
-      box-shadow: 0 0 0 4px #ffffff, 0 12px 32px rgba(37, 99, 235, 0.25);
+      box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.4), 0 12px 32px rgba(6, 182, 212, 0.28);
     }
 
     .welcome-title {
-      font-size: 1.9rem;
+      font-size: 1.85rem;
       font-weight: 800;
       letter-spacing: -0.03em;
       margin-bottom: 8px;
@@ -777,9 +805,9 @@
     }
 
     .welcome-subtitle {
-      font-size: 0.96rem;
+      font-size: 0.98rem;
       color: var(--text-secondary);
-      max-width: 620px;
+      max-width: 580px;
       line-height: 1.55;
       margin-bottom: 24px;
     }
@@ -811,15 +839,15 @@
       background: var(--bg-card-hover);
       border-color: var(--accent-cyan);
       transform: translateY(-2px);
-      box-shadow: var(--shadow-md);
+      box-shadow: var(--shadow-glow);
     }
 
     .suggestion-icon {
       width: 34px;
       height: 34px;
       border-radius: 10px;
-      background: rgba(6, 182, 212, 0.12);
-      color: var(--accent-blue);
+      background: rgba(6, 182, 212, 0.14);
+      color: var(--accent-cyan);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -869,6 +897,19 @@
       box-shadow: var(--shadow-md);
       white-space: pre-wrap;
       word-wrap: break-word;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .user-bubble-image {
+      max-width: 100%;
+      max-height: 260px;
+      border-radius: 12px;
+      object-fit: contain;
+      background: rgba(2, 6, 23, 0.45);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      display: block;
     }
 
     /* AI Message */
@@ -908,9 +949,9 @@
     }
 
     .assistant-bubble.error-bubble {
-      border-color: rgba(239, 68, 68, 0.4);
-      background: rgba(254, 242, 242, 0.92);
-      color: #991b1b;
+      border-color: rgba(239, 68, 68, 0.45);
+      background: rgba(127, 29, 29, 0.28);
+      color: #fca5a5;
     }
 
     /* Formatted Markdown Elements inside AI Replies */
@@ -949,7 +990,7 @@
 
     .assistant-bubble strong {
       font-weight: 700;
-      color: #0f172a;
+      color: #ffffff;
     }
 
     .assistant-bubble code.inline-code {
@@ -959,7 +1000,7 @@
       color: var(--inline-code-text);
       padding: 2px 6px;
       border-radius: 6px;
-      border: 1px solid rgba(37, 99, 235, 0.15);
+      border: 1px solid rgba(56, 189, 248, 0.22);
     }
 
     /* Engineering SVG Diagram Box */
@@ -967,7 +1008,7 @@
       margin: 14px 0;
       border-radius: 14px;
       overflow: hidden;
-      background: #ffffff;
+      background: #020617;
       border: 1px solid var(--border-accent);
       box-shadow: var(--shadow-sm);
     }
@@ -977,11 +1018,11 @@
       align-items: center;
       justify-content: space-between;
       padding: 8px 14px;
-      background: rgba(6, 182, 212, 0.08);
+      background: rgba(6, 182, 212, 0.14);
       border-bottom: 1px solid var(--border-frost);
       font-size: 0.78rem;
       font-weight: 600;
-      color: var(--accent-blue);
+      color: #38bdf8;
     }
 
     .diagram-canvas {
@@ -990,7 +1031,7 @@
       display: flex;
       justify-content: center;
       align-items: center;
-      background: #f8fbff;
+      background: #ffffff;
     }
 
     .diagram-canvas svg {
@@ -1006,7 +1047,7 @@
       overflow: hidden;
       background: var(--code-bg);
       border: 1px solid var(--code-border);
-      box-shadow: 0 6px 18px rgba(2, 6, 23, 0.25);
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
     }
 
     .code-block-header {
@@ -1085,18 +1126,18 @@
     }
 
     .action-btn:hover {
-      background: rgba(6, 182, 212, 0.1);
-      color: var(--accent-blue);
+      background: rgba(6, 182, 212, 0.14);
+      color: var(--accent-cyan);
     }
 
     .action-btn.active-like {
-      color: var(--accent-blue);
-      background: rgba(37, 99, 235, 0.12);
+      color: #38bdf8;
+      background: rgba(56, 189, 248, 0.14);
     }
 
     .action-btn.active-dislike {
-      color: #ef4444;
-      background: rgba(239, 68, 68, 0.12);
+      color: #f87171;
+      background: rgba(239, 68, 68, 0.14);
     }
 
     .msg-timestamp {
@@ -1123,17 +1164,17 @@
 
     .typing-dots span:nth-child(1) { animation-delay: -0.32s; }
     .typing-dots span:nth-child(2) { animation-delay: -0.16s; background: var(--accent-blue); }
-    .typing-dots span:nth-child(3) { animation-delay: 0s; background: var(--accent-indigo); }
+    .typing-dots span:nth-child(3) { animation-delay: 0s; background: #38bdf8; }
 
     @keyframes bounceDot {
       0%, 80%, 100% { transform: scale(0.55); opacity: 0.45; }
       40% { transform: scale(1); opacity: 1; }
     }
 
-    /* Bottom Input Area */
+    /* Bottom Input Area + Attachment Preview + Voice Status */
     .input-section {
-      padding: 12px 20px 16px;
-      background: linear-gradient(to top, var(--bg-main) 75%, transparent);
+      padding: 10px 20px 16px;
+      background: linear-gradient(to top, var(--bg-main) 78%, transparent);
       flex-shrink: 0;
     }
 
@@ -1142,21 +1183,190 @@
       margin: 0 auto;
     }
 
+    .voice-status-banner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 7px 14px;
+      margin-bottom: 8px;
+      border-radius: 12px;
+      background: rgba(6, 182, 212, 0.12);
+      border: 1px solid rgba(6, 182, 212, 0.35);
+      color: #38bdf8;
+      font-size: 0.8rem;
+      font-weight: 500;
+    }
+
+    .voice-status-banner.error {
+      background: rgba(239, 68, 68, 0.14);
+      border-color: rgba(239, 68, 68, 0.38);
+      color: #fca5a5;
+    }
+
+    .attachment-preview-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 8px 12px;
+      margin-bottom: 8px;
+      border-radius: 14px;
+      background: rgba(15, 23, 42, 0.94);
+      border: 1px solid var(--border-accent);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .attachment-preview-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .attachment-thumb {
+      width: 48px;
+      height: 48px;
+      border-radius: 10px;
+      object-fit: cover;
+      border: 1px solid rgba(6, 182, 212, 0.45);
+      flex-shrink: 0;
+    }
+
+    .attachment-meta {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    .attachment-name {
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--text-primary);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .attachment-hint {
+      font-size: 0.74rem;
+      color: var(--accent-cyan);
+    }
+
+    .remove-attachment-btn {
+      background: rgba(239, 68, 68, 0.16);
+      border: 1px solid rgba(239, 68, 68, 0.35);
+      color: #fca5a5;
+      width: 30px;
+      height: 30px;
+      border-radius: 8px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: all 0.15s ease;
+    }
+
+    .remove-attachment-btn:hover {
+      background: rgba(239, 68, 68, 0.28);
+      color: #ffffff;
+    }
+
     .input-wrapper {
+      position: relative;
       display: flex;
       align-items: flex-end;
-      gap: 10px;
+      gap: 8px;
       background: var(--bg-input);
       border: 1.5px solid var(--border-frost);
       border-radius: 24px;
-      padding: 8px 10px 8px 18px;
+      padding: 8px 10px 8px 12px;
       box-shadow: var(--shadow-md);
       transition: border-color 0.2s ease, box-shadow 0.2s ease;
     }
 
     .input-wrapper:focus-within {
       border-color: var(--accent-cyan);
-      box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.16), var(--shadow-md);
+      box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.18), var(--shadow-md);
+    }
+
+    .input-tool-btn {
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      border: 1px solid var(--border-frost);
+      background: rgba(30, 41, 59, 0.75);
+      color: var(--text-secondary);
+      font-size: 0.92rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: all 0.16s ease;
+    }
+
+    .input-tool-btn:hover:not(:disabled) {
+      border-color: var(--accent-cyan);
+      color: var(--accent-cyan);
+      background: rgba(6, 182, 212, 0.14);
+    }
+
+    .input-tool-btn.listening {
+      background: rgba(239, 68, 68, 0.2);
+      border-color: #ef4444;
+      color: #f87171;
+      animation: micPulse 1.2s infinite;
+    }
+
+    @keyframes micPulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.45); }
+      50% { box-shadow: 0 0 0 7px rgba(239, 68, 68, 0); }
+    }
+
+    /* Photo Picker Popover (Camera vs Gallery) */
+    .photo-picker-menu {
+      position: absolute;
+      bottom: 56px;
+      left: 10px;
+      background: #0f172a;
+      border: 1px solid var(--border-accent);
+      border-radius: 14px;
+      padding: 6px;
+      box-shadow: var(--shadow-lg);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      z-index: 60;
+      min-width: 195px;
+    }
+
+    .photo-picker-item {
+      background: transparent;
+      border: none;
+      color: var(--text-primary);
+      font-family: inherit;
+      font-size: 0.84rem;
+      font-weight: 500;
+      padding: 9px 12px;
+      border-radius: 9px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-align: left;
+      transition: background 0.15s ease;
+    }
+
+    .photo-picker-item i {
+      color: var(--accent-cyan);
+      width: 16px;
+      text-align: center;
+    }
+
+    .photo-picker-item:hover {
+      background: rgba(6, 182, 212, 0.16);
     }
 
     #messageInput {
@@ -1169,7 +1379,7 @@
       line-height: 1.5;
       color: var(--text-primary);
       max-height: 160px;
-      padding: 6px 0;
+      padding: 6px 2px;
       outline: none;
     }
 
@@ -1195,7 +1405,8 @@
     }
 
     #sendBtn:disabled {
-      background: #cbd5e1;
+      background: #334155;
+      color: #94a3b8;
       box-shadow: none;
       cursor: not-allowed;
       opacity: 0.7;
@@ -1216,8 +1427,8 @@
     .modal-backdrop {
       position: fixed;
       inset: 0;
-      background: rgba(15, 23, 42, 0.58);
-      backdrop-filter: blur(5px);
+      background: rgba(0, 0, 0, 0.72);
+      backdrop-filter: blur(6px);
       z-index: 200;
       display: flex;
       align-items: center;
@@ -1229,12 +1440,13 @@
     .payment-modal-card {
       width: 100%;
       max-width: 440px;
-      background: #ffffff;
+      background: #0f172a;
       border: 1.5px solid var(--border-accent);
       border-radius: 22px;
       padding: 24px 22px;
       box-shadow: var(--shadow-lg);
       position: relative;
+      color: var(--text-primary);
     }
 
     .payment-modal-top {
@@ -1250,8 +1462,8 @@
       gap: 7px;
       padding: 5px 12px;
       border-radius: 999px;
-      background: rgba(6, 182, 212, 0.12);
-      color: var(--accent-blue);
+      background: rgba(6, 182, 212, 0.15);
+      color: #38bdf8;
       font-size: 0.78rem;
       font-weight: 700;
     }
@@ -1267,7 +1479,7 @@
     }
 
     .close-modal-btn:hover {
-      background: #f1f5f9;
+      background: rgba(255, 255, 255, 0.08);
       color: var(--text-primary);
     }
 
@@ -1286,7 +1498,7 @@
     }
 
     .payment-offer-box {
-      background: var(--bg-main);
+      background: rgba(2, 6, 23, 0.85);
       border: 1px solid var(--border-frost);
       border-radius: 14px;
       padding: 12px 14px;
@@ -1323,18 +1535,18 @@
       line-height: 1.45;
       padding: 10px 12px;
       border-radius: 10px;
-      background: rgba(37, 99, 235, 0.08);
-      color: var(--accent-blue);
+      background: rgba(6, 182, 212, 0.14);
+      color: #38bdf8;
     }
 
     .payment-status-msg.error {
-      background: rgba(239, 68, 68, 0.1);
-      color: #b91c1c;
+      background: rgba(239, 68, 68, 0.15);
+      color: #fca5a5;
     }
 
     .payment-status-msg.success {
-      background: rgba(16, 185, 129, 0.12);
-      color: #047857;
+      background: rgba(16, 185, 129, 0.16);
+      color: #6ee7b7;
     }
 
     /* Scrollbar Styling */
@@ -1346,11 +1558,11 @@
       background: transparent;
     }
     ::-webkit-scrollbar-thumb {
-      background: rgba(148, 163, 184, 0.4);
+      background: rgba(148, 163, 184, 0.35);
       border-radius: 999px;
     }
     ::-webkit-scrollbar-thumb:hover {
-      background: rgba(100, 116, 139, 0.6);
+      background: rgba(148, 163, 184, 0.55);
     }
 
     /* Responsive Mobile Styles */
@@ -1376,11 +1588,15 @@
       }
 
       .brand-name {
-        font-size: 1.1rem;
+        font-size: 1.08rem;
       }
 
       .status-badge,
       .active-unit-pill {
+        display: none;
+      }
+
+      .voice-reply-btn span.voice-label-prefix {
         display: none;
       }
 
@@ -1406,10 +1622,10 @@
     <div class="gate-card">
       <div class="gate-header">
         <div class="avatar-wrapper gate-avatar">
-          <img src="avatar.png" alt="Metrix AI 01" onerror="this.parentElement.classList.add('img-failed')" />
+          <img src="avatar.png" alt="Matrix AI" onerror="this.parentElement.classList.add('img-failed')" />
           <div class="avatar-fallback">M</div>
         </div>
-        <h1 class="gate-title">Sign In to <span>Metrix AI 01</span></h1>
+        <h1 class="gate-title">Sign In to <span>Matrix AI</span></h1>
         <p class="gate-subtitle">
           Enter your student email and create a strong password to unlock your specialized study workspace.
         </p>
@@ -1468,12 +1684,12 @@
     <div class="gate-card">
       <div class="gate-header">
         <div class="avatar-wrapper gate-avatar">
-          <img src="avatar.png" alt="Metrix AI 01" onerror="this.parentElement.classList.add('img-failed')" />
+          <img src="avatar.png" alt="Matrix AI" onerror="this.parentElement.classList.add('img-failed')" />
           <div class="avatar-fallback">M</div>
         </div>
         <h2 class="gate-title">Choose Your <span>Study Unit</span></h2>
         <p class="gate-subtitle">
-          Select one of the six options below so Metrix AI 01 can specialize deeply in your unit.
+          Select one of the six options below to begin.
         </p>
       </div>
 
@@ -1488,7 +1704,7 @@
             <i class="fa-solid fa-code"></i>
             <span>1. Computer Programming</span>
           </div>
-          <div class="unit-option-desc">Loops, structs, strings, arrays, pointers, real-life examples & Kenyan past papers.</div>
+          <div class="unit-option-desc">Loops, structs, strings, arrays, pointers & past papers.</div>
         </button>
 
         <button type="button" class="unit-option-btn" data-unit="Engineering Physics">
@@ -1496,7 +1712,7 @@
             <i class="fa-solid fa-atom"></i>
             <span>2. Engineering Physics</span>
           </div>
-          <div class="unit-option-desc">Course outlines, mechanics, waves, electricity, labs & university past exams.</div>
+          <div class="unit-option-desc">Mechanics, waves, electricity, labs & past exams.</div>
         </button>
 
         <button type="button" class="unit-option-btn" data-unit="Engineering Chemistry">
@@ -1504,7 +1720,7 @@
             <i class="fa-solid fa-flask"></i>
             <span>3. Engineering Chemistry</span>
           </div>
-          <div class="unit-option-desc">Course outlines, stoichiometry, thermodynamics, materials & past exam questions.</div>
+          <div class="unit-option-desc">Stoichiometry, thermodynamics, materials & past exams.</div>
         </button>
 
         <button type="button" class="unit-option-btn" data-unit="Engineering Mathematics">
@@ -1512,7 +1728,7 @@
             <i class="fa-solid fa-square-root-variable"></i>
             <span>4. Engineering Mathematics</span>
           </div>
-          <div class="unit-option-desc">Course outlines, calculus, linear algebra, ODEs & Kenyan university past papers.</div>
+          <div class="unit-option-desc">Calculus, linear algebra, ODEs & past papers.</div>
         </button>
 
         <button type="button" class="unit-option-btn" data-unit="Academic Writing">
@@ -1520,7 +1736,7 @@
             <i class="fa-solid fa-pen-nib"></i>
             <span>5. Academic Writing</span>
           </div>
-          <div class="unit-option-desc">Past papers, research reports, citations, structure & study guides.</div>
+          <div class="unit-option-desc">Past papers, research reports, citations & structure.</div>
         </button>
 
         <button type="button" class="unit-option-btn" id="otherUnitBtn" data-unit="OTHER">
@@ -1528,7 +1744,7 @@
             <i class="fa-solid fa-compass-drafting"></i>
             <span>6. Any Other Unit</span>
           </div>
-          <div class="unit-option-desc">Type any unit you are interested in (e.g., Engineering Drawing, Circuits).</div>
+          <div class="unit-option-desc">Type any unit you are studying (e.g., Engineering Drawing).</div>
         </button>
       </div>
 
@@ -1570,7 +1786,7 @@
       <div class="sidebar-footer">
         <div class="sidebar-footer-brand">
           <i class="fa-solid fa-microchip"></i>
-          <span>Digital solution agency</span>
+          <span>Structura Digital Solutions</span>
         </div>
         <button type="button" class="link-btn" id="sidebarSignOutBtn">Sign out</button>
       </div>
@@ -1586,12 +1802,12 @@
           </button>
 
           <div class="avatar-wrapper topbar-avatar">
-            <img src="avatar.png" alt="Metrix AI 01" onerror="this.parentElement.classList.add('img-failed')" />
+            <img src="avatar.png" alt="Matrix AI" onerror="this.parentElement.classList.add('img-failed')" />
             <div class="avatar-fallback">M</div>
           </div>
 
           <div class="brand-info">
-            <h1 class="brand-name">Metrix AI 01</h1>
+            <h1 class="brand-name">Matrix AI</h1>
             <span class="status-badge">
               <span class="status-dot"></span>
               Online
@@ -1600,6 +1816,11 @@
         </div>
 
         <div class="top-bar-right">
+          <button type="button" class="voice-reply-btn" id="voiceReplyToggleBtn" aria-pressed="false" title="Toggle spoken AI replies">
+            <i class="fa-solid fa-volume-xmark" id="voiceReplyIcon"></i>
+            <span><span class="voice-label-prefix">Voice Reply: </span><strong id="voiceReplyStateText">Off</strong></span>
+          </button>
+
           <span class="active-unit-pill" id="activeUnitBadge">
             <i class="fa-solid fa-book-open"></i>
             <span id="activeUnitText">Computer Programming</span>
@@ -1616,7 +1837,7 @@
           <!-- Welcome Screen -->
           <section class="welcome-screen" id="welcomeScreen">
             <div class="avatar-wrapper welcome-avatar">
-              <img src="avatar.png" alt="Metrix AI 01" onerror="this.parentElement.classList.add('img-failed')" />
+              <img src="avatar.png" alt="Matrix AI" onerror="this.parentElement.classList.add('img-failed')" />
               <div class="avatar-fallback">M</div>
             </div>
 
@@ -1626,22 +1847,22 @@
             </p>
 
             <div class="suggestions-grid" id="suggestionsGrid">
-              <button class="suggestion-card" type="button" data-prompt="Give me a Kenyan university-style C programming past exam question covering loops, arrays, pointers, and structures with a real-life example and full code solution.">
+              <button class="suggestion-card" type="button" data-prompt="Give me a Kenyan university-style C programming past exam question covering loops, arrays, pointers, and structures with full code solution.">
                 <div class="suggestion-icon"><i class="fa-solid fa-code"></i></div>
                 <h4>1. Computer Programming</h4>
-                <p>Loops, structs, strings, arrays, pointers & Kenyan past exams.</p>
+                <p>Loops, structs, strings, arrays, pointers & past exams.</p>
               </button>
 
-              <button class="suggestion-card" type="button" data-prompt="Give me the course outline and a Kenyan university past-paper problem with step-by-step solutions for Engineering Physics, Engineering Chemistry, and Engineering Mathematics.">
+              <button class="suggestion-card" type="button" data-prompt="Give me a Kenyan university past-paper problem with step-by-step solutions for Engineering Mathematics.">
                 <div class="suggestion-icon"><i class="fa-solid fa-square-root-variable"></i></div>
                 <h4>2. Physics, Chemistry & Math</h4>
-                <p>Full course outlines, university past papers & worked solutions.</p>
+                <p>University past papers & worked solutions.</p>
               </button>
 
-              <button class="suggestion-card" type="button" data-prompt="Provide academic writing guidelines, common Kenyan university exam questions on academic writing, referencing rules, and a clear report template.">
+              <button class="suggestion-card" type="button" data-prompt="Provide academic writing referencing rules and a clear report structure template.">
                 <div class="suggestion-icon"><i class="fa-solid fa-pen-nib"></i></div>
                 <h4>3. Academic Writing</h4>
-                <p>Past papers, citations, structure & study materials.</p>
+                <p>Past papers, citations & report structure.</p>
               </button>
 
               <button class="suggestion-card" type="button" data-prompt="Show step-by-step construction and draw the curve of interpenetration between two unequal vertical and horizontal cylinders intersecting at 90 degrees.">
@@ -1660,18 +1881,88 @@
       <!-- Bottom Input Area -->
       <div class="input-section">
         <div class="input-box-container">
+          <!-- Voice Listening / Error Status Banner -->
+          <div class="voice-status-banner hidden" id="voiceStatusBanner">
+            <span id="voiceStatusText">Listening... Speak now.</span>
+            <button type="button" class="link-btn" id="stopVoiceBannerBtn">Stop</button>
+          </div>
+
+          <!-- Selected Photo Thumbnail Preview -->
+          <div class="attachment-preview-bar hidden" id="attachmentPreviewBar">
+            <div class="attachment-preview-left">
+              <img id="attachmentThumbImg" class="attachment-thumb" src="" alt="Selected photo preview" />
+              <div class="attachment-meta">
+                <span class="attachment-name" id="attachmentFileName">image.jpg</span>
+                <span class="attachment-hint">Photo ready to send</span>
+              </div>
+            </div>
+            <button type="button" class="remove-attachment-btn" id="removeAttachmentBtn" title="Remove photo" aria-label="Remove selected photo">
+              <i class="fa-solid fa-xmark"></i>
+            </button>
+          </div>
+
+          <!-- Hidden File Inputs for Gallery/Files & Camera -->
+          <input
+            type="file"
+            id="galleryFileInput"
+            accept="image/jpeg,image/png,image/webp"
+            class="hidden"
+          />
+          <input
+            type="file"
+            id="cameraFileInput"
+            accept="image/jpeg,image/png,image/webp"
+            capture="environment"
+            class="hidden"
+          />
+
           <div class="input-wrapper">
+            <!-- Photo Upload / Camera Menu Trigger -->
+            <button
+              type="button"
+              class="input-tool-btn"
+              id="photoAttachBtn"
+              title="Upload photo or take picture"
+              aria-label="Upload photo or take picture"
+            >
+              <i class="fa-solid fa-camera"></i>
+            </button>
+
+            <!-- Camera vs Gallery Choice Menu -->
+            <div class="photo-picker-menu hidden" id="photoPickerMenu">
+              <button type="button" class="photo-picker-item" id="takePhotoOptionBtn">
+                <i class="fa-solid fa-camera"></i>
+                <span>Take Photo (Camera)</span>
+              </button>
+              <button type="button" class="photo-picker-item" id="chooseGalleryOptionBtn">
+                <i class="fa-regular fa-image"></i>
+                <span>Choose from Gallery</span>
+              </button>
+            </div>
+
             <textarea
               id="messageInput"
               rows="1"
-              placeholder="Ask Matrix AI about your selected unit..."
+              placeholder="Ask Matrix AI, upload a photo, or use the mic..."
               aria-label="Message input"
             ></textarea>
+
+            <!-- Microphone Voice Input Button -->
+            <button
+              type="button"
+              class="input-tool-btn"
+              id="micVoiceBtn"
+              title="Speak your question"
+              aria-label="Microphone voice input"
+            >
+              <i class="fa-solid fa-microphone" id="micVoiceIcon"></i>
+            </button>
+
             <button id="sendBtn" type="button" disabled aria-label="Send message">
               <i class="fa-solid fa-arrow-up"></i>
             </button>
           </div>
-          <p class="disclaimer-note">Metrix AI 01 can make mistakes.</p>
+          <p class="disclaimer-note">Matrix AI can make mistakes.</p>
         </div>
       </div>
     </main>
@@ -1692,7 +1983,7 @@
 
       <h3 class="payment-title" id="paymentModalTitle">Unlock 24-Hour Access</h3>
       <p class="payment-desc">
-        You have used your 10 free questions. Pay only <strong>10 KES</strong> via M-Pesa to get <strong>24 hours of access</strong> on Metrix AI 01.
+        You have used your 10 free questions. Pay only <strong>10 KES</strong> via M-Pesa to get <strong>24 hours of access</strong> on Matrix AI.
       </p>
 
       <div class="payment-offer-box">
