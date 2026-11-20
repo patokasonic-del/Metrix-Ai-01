@@ -1,5 +1,6 @@
 const ALLOWED_IMAGE_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const UPSTREAM_TIMEOUT_MS = 18000;
+const GEMINI_MODEL = 'gemini-3.8-flash';
 
 function buildSystemInstruction(selectedUnit = 'General Academic Studies') {
   return `You are Matrix AI (Metrix AI 01), an academic tutor created by Patrick Njoroge at Structura Digital Solutions (Digital solution agency), designed to help university and college students—especially in Kenyan universities (such as Murang'a University, JKUAT, UoN, TUK, KU, Egerton, and CUE/TVET engineering curricula).
@@ -51,121 +52,19 @@ function buildGeminiContents(historyTurns, resolvedUserText, imageBase64, mimeTy
     });
   }
 
-  if (historyTurns.length > 0 && historyTurns[historyTurns.length - 1].role === 'user') {
-    return [
-      ...historyTurns.slice(0, -1),
-      { role: 'user', parts: latestParts },
-    ];
-  }
-  return [
-    ...historyTurns,
-    { role: 'user', parts: latestParts },
-  ];
-}
-
-async function callGemini({ apiKey, model, selectedUnit, historyTurns, resolvedUserText, imageBase64, mimeType }) {
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
-    model
-  )}:generateContent?key=${encodeURIComponent(apiKey)}`;
-
-  const contents = buildGeminiContents(historyTurns, resolvedUserText, imageBase64, mimeType);
-
-  const response = await fetchWithTimeout(endpoint, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      system_instruction: {
-        parts: [{ text: buildSystemInstruction(selectedUnit) }],
-      },
-      contents,
-      generationConfig: {
-        temperature: 0.25,
-        maxOutputTokens: 1500,
-      },
-    }),
-  });
-
-  const data = await response.json().catch(() => null);
-  if (!response.ok) {
-    const errMsg = data?.error?.message || `Gemini returned status ${response.status}.`;
-    const err = new Error(errMsg);
-    err.status = response.status;
-    throw err;
+  let turns = [...historyTurns];
+  if (turns.length > 0 && turns[turns.length - 1].role === 'user') {
+    turns = [...turns.slice(0, -1), { role: 'user', parts: latestParts }];
+  } else {
+    turns = [...turns, { role: 'user', parts: latestParts }];
   }
 
-  const parts = data?.candidates?.[0]?.content?.parts;
-  const reply = Array.isArray(parts)
-    ? parts
-        .map((p) => (typeof p?.text === 'string' ? p.text : ''))
-        .join('')
-        .trim()
-    : '';
-
-  if (!reply) {
-    throw new Error('Received an empty response from Gemini.');
-  }
-  return reply;
-}
-
-async function callGroq({ apiKey, selectedUnit, historyMessages, resolvedUserText, imageBase64, mimeType }) {
-  const latestUserContent =
-    imageBase64 && mimeType
-      ? [
-          { type: 'text', text: resolvedUserText },
-          {
-            type: 'image_url',
-            image_url: {
-              url: `data:${mimeType};base64,${imageBase64}`,
-            },
-          },
-        ]
-      : resolvedUserText;
-
-  const messagesPayload =
-    historyMessages.length > 0 && historyMessages[historyMessages.length - 1].role === 'user'
-      ? [
-          { role: 'system', content: buildSystemInstruction(selectedUnit) },
-          ...historyMessages.slice(0, -1),
-          { role: 'user', content: latestUserContent },
-        ]
-      : [
-          { role: 'system', content: buildSystemInstruction(selectedUnit) },
-          ...historyMessages,
-          { role: 'user', content: latestUserContent },
-        ];
-
-  const model = imageBase64
-    ? 'meta-llama/llama-4-scout-17b-16e-instruct'
-    : 'llama-3.3-70b-versatile';
-
-  const response = await fetchWithTimeout('https://api.groq.com/openai/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      messages: messagesPayload,
-      temperature: 0.25,
-      max_tokens: 1500,
-    }),
-  });
-
-  const data = await response.json().catch(() => null);
-  if (!response.ok) {
-    const errMsg = data?.error?.message || `Groq returned status ${response.status}.`;
-    const err = new Error(errMsg);
-    err.status = response.status;
-    throw err;
+  // Gemini requires the conversation turns to start with 'user'
+  while (turns.length > 0 && turns[0].role !== 'user') {
+    turns.shift();
   }
 
-  let reply = data?.choices?.[0]?.message?.content?.trim() || '';
-  reply = reply.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
-  if (!reply) {
-    throw new Error('Received an empty response from Groq.');
-  }
-  return reply;
+  return turns;
 }
 
 export default async function handler(req, res) {
@@ -174,16 +73,14 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed. Use POST.' });
   }
 
-  const geminiApiKey = (process.env.GEMINI_API_KEY || '').trim();
-  const groqApiKey = (process.env.GROQ_API_KEY || '').trim();
-
-  if (!geminiApiKey && !groqApiKey) {
+  const apiKey = (process.env.GEMINI_API_KEY || '').trim();
+  if (!apiKey) {
     return res.status(500).json({
-      error: 'Server configuration error: neither GEMINI_API_KEY nor GROQ_API_KEY is configured in Vercel.',
+      error: 'Server configuration error: GEMINI_API_KEY is missing in Vercel environment variables.',
     });
   }
 
-  const geminiModel = 'gemini-3.8-flash';
+  const model = (process.env.GEMINI_MODEL || GEMINI_MODEL).trim();
 
   try {
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
@@ -211,7 +108,7 @@ export default async function handler(req, res) {
     const rawMessages = Array.isArray(body?.messages) ? body.messages : [];
     const directMessage = typeof body?.message === 'string' ? body.message.trim() : '';
 
-    const historyMessages = rawMessages
+    const historyTurns = rawMessages
       .filter(
         (msg) =>
           msg &&
@@ -221,63 +118,57 @@ export default async function handler(req, res) {
       )
       .slice(-8)
       .map((msg) => ({
-        role: msg.role,
-        content: msg.content.trim(),
+        role: msg.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: msg.content.trim() }],
       }));
-
-    const historyTurns = historyMessages.map((msg) => ({
-      role: msg.role === 'assistant' ? 'model' : 'user',
-      parts: [{ text: msg.content }],
-    }));
 
     const resolvedUserText =
       directMessage ||
       (imageBase64 ? 'Analyze this image and answer based on the selected unit.' : '');
 
-    if (historyMessages.length === 0 && !resolvedUserText && !imageBase64) {
+    if (historyTurns.length === 0 && !resolvedUserText && !imageBase64) {
       return res.status(400).json({ error: 'Please enter a message or upload an image.' });
     }
 
-    let geminiError = null;
-    if (geminiApiKey) {
-      try {
-        const reply = await callGemini({
-          apiKey: geminiApiKey,
-          model: geminiModel,
-          selectedUnit,
-          historyTurns,
-          resolvedUserText,
-          imageBase64,
-          mimeType,
-        });
-        return res.status(200).json({ reply });
-      } catch (err) {
-        geminiError = err;
-      }
-    }
+    const contents = buildGeminiContents(historyTurns, resolvedUserText, imageBase64, mimeType);
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+      model
+    )}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
-    if (groqApiKey) {
-      try {
-        const reply = await callGroq({
-          apiKey: groqApiKey,
-          selectedUnit,
-          historyMessages,
-          resolvedUserText,
-          imageBase64,
-          mimeType,
-        });
-        return res.status(200).json({ reply });
-      } catch (groqErr) {
-        const msg = geminiError
-          ? `Gemini: ${geminiError.message} | Groq: ${groqErr.message}`
-          : groqErr.message;
-        return res.status(502).json({ error: msg });
-      }
-    }
-
-    return res.status(502).json({
-      error: geminiError?.message || 'Failed to receive a response from the AI service.',
+    const geminiResponse = await fetchWithTimeout(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        system_instruction: {
+          parts: [{ text: buildSystemInstruction(selectedUnit) }],
+        },
+        contents,
+        generationConfig: {
+          maxOutputTokens: 1500,
+        },
+      }),
     });
+
+    const data = await geminiResponse.json().catch(() => null);
+    if (!geminiResponse.ok) {
+      const apiErrMessage =
+        data?.error?.message || `Gemini returned status ${geminiResponse.status}.`;
+      return res.status(geminiResponse.status).json({ error: apiErrMessage });
+    }
+
+    const parts = data?.candidates?.[0]?.content?.parts;
+    const reply = Array.isArray(parts)
+      ? parts
+          .map((p) => (typeof p?.text === 'string' ? p.text : ''))
+          .join('')
+          .trim()
+      : '';
+
+    if (!reply) {
+      return res.status(502).json({ error: 'Received an empty response from Matrix AI.' });
+    }
+
+    return res.status(200).json({ reply });
   } catch (error) {
     const message =
       error?.name === 'AbortError'
