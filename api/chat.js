@@ -183,7 +183,7 @@ export default async function handler(req, res) {
     });
   }
 
-  const geminiModel = 'gemini-2.5-flash';
+  const geminiModel = 'gemini-3.8-flash';
 
   try {
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
