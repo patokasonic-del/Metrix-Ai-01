@@ -107,11 +107,6 @@ async function callGemini({ apiKey, model, selectedUnit, historyTurns, resolvedU
   return reply;
 }
 
-function normalizeGroqModel(rawModel, fallback) {
-  const cleaned = String(rawModel || '').trim().replace(/versalite/gi, 'versatile');
-  return cleaned || fallback;
-}
-
 async function callGroq({ apiKey, selectedUnit, historyMessages, resolvedUserText, imageBase64, mimeType }) {
   const latestUserContent =
     imageBase64 && mimeType
@@ -140,8 +135,8 @@ async function callGroq({ apiKey, selectedUnit, historyMessages, resolvedUserTex
         ];
 
   const model = imageBase64
-    ? normalizeGroqModel(process.env.GROQ_VISION_MODEL, 'meta-llama/llama-4-scout-17b-16e-instruct')
-    : normalizeGroqModel(process.env.GROQ_MODEL, 'llama-3.3-70b-versatile');
+    ? 'meta-llama/llama-4-scout-17b-16e-instruct'
+    : 'llama-3.3-70b-versatile';
 
   const response = await fetchWithTimeout('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
@@ -188,7 +183,7 @@ export default async function handler(req, res) {
     });
   }
 
-  const geminiModel = (process.env.GEMINI_MODEL || 'gemini-2.5-flash').trim();
+  const geminiModel = 'gemini-2.5-flash';
 
   try {
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
@@ -216,7 +211,6 @@ export default async function handler(req, res) {
     const rawMessages = Array.isArray(body?.messages) ? body.messages : [];
     const directMessage = typeof body?.message === 'string' ? body.message.trim() : '';
 
-    // Send up to last 8 turns to keep latency low
     const historyMessages = rawMessages
       .filter(
         (msg) =>
@@ -244,6 +238,7 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Please enter a message or upload an image.' });
     }
 
+    let geminiError = null;
     if (geminiApiKey) {
       try {
         const reply = await callGemini({
@@ -256,23 +251,33 @@ export default async function handler(req, res) {
           mimeType,
         });
         return res.status(200).json({ reply });
-      } catch (geminiErr) {
-        if (!groqApiKey) {
-          throw geminiErr;
-        }
+      } catch (err) {
+        geminiError = err;
       }
     }
 
-    const reply = await callGroq({
-      apiKey: groqApiKey,
-      selectedUnit,
-      historyMessages,
-      resolvedUserText,
-      imageBase64,
-      mimeType,
-    });
+    if (groqApiKey) {
+      try {
+        const reply = await callGroq({
+          apiKey: groqApiKey,
+          selectedUnit,
+          historyMessages,
+          resolvedUserText,
+          imageBase64,
+          mimeType,
+        });
+        return res.status(200).json({ reply });
+      } catch (groqErr) {
+        const msg = geminiError
+          ? `Gemini: ${geminiError.message} | Groq: ${groqErr.message}`
+          : groqErr.message;
+        return res.status(502).json({ error: msg });
+      }
+    }
 
-    return res.status(200).json({ reply });
+    return res.status(502).json({
+      error: geminiError?.message || 'Failed to receive a response from the AI service.',
+    });
   } catch (error) {
     const message =
       error?.name === 'AbortError'
