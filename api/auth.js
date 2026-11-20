@@ -16,19 +16,28 @@ async function supabaseRequest(path, options = {}) {
   const supabaseUrl = (process.env.SUPABASE_URL || '').trim().replace(/\/+$/, '');
   const serviceKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
 
-  if (!supabaseUrl || !serviceKey) {
-    throw new Error('Server configuration error: SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is missing in Vercel.');
+  if (!supabaseUrl) {
+    throw new Error('Server configuration error: SUPABASE_URL is missing in Vercel.');
+  }
+  if (!serviceKey) {
+    throw new Error('Server configuration error: SUPABASE_SERVICE_ROLE_KEY is missing in Vercel.');
+  }
+
+  const headers = {
+    apikey: serviceKey,
+    'Content-Type': 'application/json',
+    Prefer: 'return=representation',
+    ...(options.headers || {}),
+  };
+
+  // Legacy JWT keys (eyJ...) require Authorization: Bearer; new sb_secret_ keys use apikey only
+  if (!serviceKey.startsWith('sb_secret_')) {
+    headers.Authorization = `Bearer ${serviceKey}`;
   }
 
   const response = await fetch(`${supabaseUrl}/rest/v1/${path}`, {
     ...options,
-    headers: {
-      apikey: serviceKey,
-      Authorization: `Bearer ${serviceKey}`,
-      'Content-Type': 'application/json',
-      Prefer: 'return=representation',
-      ...(options.headers || {}),
-    },
+    headers,
   });
 
   const data = await response.json().catch(() => null);
@@ -56,13 +65,11 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Please enter a valid student email address.' });
     }
 
-    // Look up existing student in Supabase
     const rows = await supabaseRequest(
       `students?email=eq.${encodeURIComponent(email)}&select=*`
     );
     const existingStudent = Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
 
-    // Action 1: Update selected unit for an already signed-in student
     if (action === 'update_unit') {
       if (!existingStudent) {
         return res.status(404).json({ error: 'Student account not found.' });
@@ -88,7 +95,6 @@ export default async function handler(req, res) {
       });
     }
 
-    // Action 2: Refresh student usage & 24-hour pass status from Supabase
     if (action === 'sync') {
       if (!existingStudent) {
         return res.status(404).json({ error: 'Student account not found.' });
@@ -105,7 +111,6 @@ export default async function handler(req, res) {
       });
     }
 
-    // Action 3: Sign In or Create Student Account
     if (!password || password.length < 8) {
       return res.status(400).json({
         error: 'Please enter a strong password (at least 8 characters with uppercase, lowercase, number, and symbol).',
@@ -113,7 +118,6 @@ export default async function handler(req, res) {
     }
 
     if (existingStudent) {
-      // Returning student: verify their password and return their saved usage & 24h pass state
       const valid = verifyPassword(password, existingStudent.password_hash);
       if (!valid) {
         return res.status(401).json({
@@ -134,7 +138,6 @@ export default async function handler(req, res) {
       });
     }
 
-    // First-time student: create a new record in Supabase
     const passwordHash = hashPassword(password);
     const created = await supabaseRequest('students', {
       method: 'POST',
