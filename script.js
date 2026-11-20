@@ -2,8 +2,10 @@
   const SESSION_KEY = 'metrix_ai_01_session_v1';
   const CHATS_KEY = 'metrix_ai_01_chats_by_unit_v1';
   const USAGE_KEY = 'metrix_ai_01_usage_v1';
+  const VOICE_PREF_KEY = 'metrix_ai_01_voice_reply_v1';
   const FREE_QUESTION_LIMIT = 10;
   const PASS_DURATION_MS = 24 * 60 * 60 * 1000;
+  const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
   // Auth & Unit Gate Elements
   const authScreen = document.getElementById('authScreen');
@@ -41,6 +43,28 @@
   const messageInput = document.getElementById('messageInput');
   const sendBtn = document.getElementById('sendBtn');
 
+  // Photo Attachment Elements
+  const photoAttachBtn = document.getElementById('photoAttachBtn');
+  const photoPickerMenu = document.getElementById('photoPickerMenu');
+  const takePhotoOptionBtn = document.getElementById('takePhotoOptionBtn');
+  const chooseGalleryOptionBtn = document.getElementById('chooseGalleryOptionBtn');
+  const galleryFileInput = document.getElementById('galleryFileInput');
+  const cameraFileInput = document.getElementById('cameraFileInput');
+  const attachmentPreviewBar = document.getElementById('attachmentPreviewBar');
+  const attachmentThumbImg = document.getElementById('attachmentThumbImg');
+  const attachmentFileName = document.getElementById('attachmentFileName');
+  const removeAttachmentBtn = document.getElementById('removeAttachmentBtn');
+
+  // Voice Input & Spoken Reply Elements
+  const micVoiceBtn = document.getElementById('micVoiceBtn');
+  const micVoiceIcon = document.getElementById('micVoiceIcon');
+  const voiceStatusBanner = document.getElementById('voiceStatusBanner');
+  const voiceStatusText = document.getElementById('voiceStatusText');
+  const stopVoiceBannerBtn = document.getElementById('stopVoiceBannerBtn');
+  const voiceReplyToggleBtn = document.getElementById('voiceReplyToggleBtn');
+  const voiceReplyIcon = document.getElementById('voiceReplyIcon');
+  const voiceReplyStateText = document.getElementById('voiceReplyStateText');
+
   // Payment Modal Elements
   const paymentModal = document.getElementById('paymentModal');
   const closePaymentModalBtn = document.getElementById('closePaymentModalBtn');
@@ -56,9 +80,19 @@
   let usageMap = loadUsageMap(); // { [email]: { questionsUsed, passExpiresAt, lastCheckoutId } }
   let currentChatId = null;
   let isGenerating = false;
-  let pendingPromptText = null;
+  let pendingPayload = null; // { text, attachment }
+
+  // Selected Photo State: { base64, mimeType, previewUrl, fileName }
+  let selectedAttachment = null;
+
+  // Speech Recognition & Synthesis State
+  let recognition = null;
+  let isListening = false;
+  let voiceReplyEnabled = loadVoiceReplyPref();
 
   // Boot Flow
+  initSpeechRecognition();
+  updateVoiceReplyToggleUI();
   syncViewState();
 
   // --- Session, Chat & Usage Storage Helpers ---
@@ -119,6 +153,22 @@
     }
   }
 
+  function loadVoiceReplyPref() {
+    try {
+      return localStorage.getItem(VOICE_PREF_KEY) === 'true';
+    } catch {
+      return false;
+    }
+  }
+
+  function saveVoiceReplyPref(val) {
+    try {
+      localStorage.setItem(VOICE_PREF_KEY, val ? 'true' : 'false');
+    } catch {
+      // Ignore storage error
+    }
+  }
+
   function getUserUsage() {
     const emailKey = (session?.email || 'guest').toLowerCase();
     if (!usageMap[emailKey]) {
@@ -169,9 +219,215 @@
     return list.find((c) => c.id === currentChatId) || null;
   }
 
-  // Clean, minimal welcome greeting (no extra paragraphs or topic lists)
+  // Clean, minimal welcome greeting
   function buildUnitGreeting() {
     return 'Welcome to Matrix AI! What can I help you with today?';
+  }
+
+  // --- Image Processing & Compression via HTML5 Canvas ---
+  function processSelectedImageFile(file) {
+    if (!file) return;
+    if (!ALLOWED_MIME_TYPES.includes(file.type)) {
+      showVoiceOrInputNotice('Please select a JPEG, PNG, or WebP image.', true);
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const MAX_DIMENSION = 1280;
+        let { width, height } = img;
+
+        if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
+          if (width > height) {
+            height = Math.round((height * MAX_DIMENSION) / width);
+            width = MAX_DIMENSION;
+          } else {
+            width = Math.round((width * MAX_DIMENSION) / height);
+            height = MAX_DIMENSION;
+          }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+
+        const outputMime = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+        const quality = outputMime === 'image/png' ? undefined : 0.84;
+        const dataUrl = canvas.toDataURL(outputMime, quality);
+        const base64 = dataUrl.split(',')[1] || '';
+
+        selectedAttachment = {
+          base64,
+          mimeType: outputMime,
+          previewUrl: dataUrl,
+          fileName: file.name || 'photo.jpg',
+        };
+
+        attachmentThumbImg.src = dataUrl;
+        attachmentFileName.textContent = selectedAttachment.fileName;
+        attachmentPreviewBar.classList.remove('hidden');
+        updateSendButtonState();
+        messageInput.focus();
+      };
+      img.onerror = () => {
+        showVoiceOrInputNotice('Could not read the selected image. Try another photo.', true);
+      };
+      img.src = reader.result;
+    };
+    reader.onerror = () => {
+      showVoiceOrInputNotice('Failed to load image file.', true);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function clearSelectedAttachment() {
+    selectedAttachment = null;
+    attachmentThumbImg.src = '';
+    attachmentFileName.textContent = '';
+    attachmentPreviewBar.classList.add('hidden');
+    galleryFileInput.value = '';
+    cameraFileInput.value = '';
+    updateSendButtonState();
+  }
+
+  // --- Speech Recognition (Microphone Input) & Speech Synthesis (Voice Reply) ---
+  function showVoiceOrInputNotice(message, isError = false, showStop = false) {
+    voiceStatusText.textContent = message;
+    voiceStatusBanner.classList.remove('hidden', 'error');
+    if (isError) voiceStatusBanner.classList.add('error');
+    stopVoiceBannerBtn.classList.toggle('hidden', !showStop);
+  }
+
+  function hideVoiceOrInputNotice() {
+    voiceStatusBanner.classList.add('hidden');
+  }
+
+  function initSpeechRecognition() {
+    const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRec) {
+      recognition = null;
+      return;
+    }
+
+    recognition = new SpeechRec();
+    recognition.lang = 'en-KE';
+    recognition.interimResults = true;
+    recognition.continuous = false;
+
+    let baseTextBeforeSpeech = '';
+
+    recognition.onstart = () => {
+      isListening = true;
+      baseTextBeforeSpeech = messageInput.value.trim();
+      micVoiceBtn.classList.add('listening');
+      micVoiceIcon.className = 'fa-solid fa-stop';
+      showVoiceOrInputNotice('Listening... Speak your question clearly.', false, true);
+    };
+
+    recognition.onresult = (event) => {
+      let transcript = '';
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        transcript += event.results[i][0].transcript;
+      }
+      const cleanTranscript = transcript.trim();
+      messageInput.value = baseTextBeforeSpeech
+        ? `${baseTextBeforeSpeech} ${cleanTranscript}`
+        : cleanTranscript;
+      autoResizeInput();
+      updateSendButtonState();
+    };
+
+    recognition.onerror = (event) => {
+      isListening = false;
+      micVoiceBtn.classList.remove('listening');
+      micVoiceIcon.className = 'fa-solid fa-microphone';
+      if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+        showVoiceOrInputNotice('Microphone permission blocked. Allow mic access in your browser settings.', true, false);
+      } else if (event.error === 'no-speech') {
+        showVoiceOrInputNotice('No speech detected. Tap the mic and try again.', true, false);
+      } else {
+        showVoiceOrInputNotice(`Voice input error (${event.error}). You can type your question instead.`, true, false);
+      }
+    };
+
+    recognition.onend = () => {
+      isListening = false;
+      micVoiceBtn.classList.remove('listening');
+      micVoiceIcon.className = 'fa-solid fa-microphone';
+      if (!voiceStatusBanner.classList.contains('error')) {
+        hideVoiceOrInputNotice();
+      }
+      messageInput.focus();
+    };
+  }
+
+  function toggleMicrophoneListening() {
+    stopSpeaking();
+
+    if (!recognition) {
+      showVoiceOrInputNotice('Voice input is not supported in this browser. Try Chrome or Edge.', true, false);
+      return;
+    }
+
+    if (isListening) {
+      try {
+        recognition.stop();
+      } catch {
+        // Ignore stop error
+      }
+      return;
+    }
+
+    hideVoiceOrInputNotice();
+    try {
+      recognition.start();
+    } catch {
+      showVoiceOrInputNotice('Unable to start microphone right now. Please try again.', true, false);
+    }
+  }
+
+  function updateVoiceReplyToggleUI() {
+    voiceReplyToggleBtn.classList.toggle('active', voiceReplyEnabled);
+    voiceReplyToggleBtn.setAttribute('aria-pressed', voiceReplyEnabled ? 'true' : 'false');
+    voiceReplyIcon.className = voiceReplyEnabled ? 'fa-solid fa-volume-high' : 'fa-solid fa-volume-xmark';
+    voiceReplyStateText.textContent = voiceReplyEnabled ? 'On' : 'Off';
+  }
+
+  function stopSpeaking() {
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+  }
+
+  function cleanTextForSpeech(rawText) {
+    return String(rawText || '')
+      .replace(/```svg[\s\S]*?```/gi, 'Technical diagram shown on screen.')
+      .replace(/```[\s\S]*?```/g, 'Code example shown on screen.')
+      .replace(/`([^`]+)`/g, '$1')
+      .replace(/\*\*([^*]+)\*\*/g, '$1')
+      .replace(/\*([^*]+)\*/g, '$1')
+      .replace(/^#{1,6}\s+/gm, '')
+      .replace(/^[-*•]\s+/gm, '')
+      .replace(/\n{2,}/g, '. ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function speakAssistantReply(rawText) {
+    if (!voiceReplyEnabled || !('speechSynthesis' in window)) return;
+    stopSpeaking();
+
+    const spokenText = cleanTextForSpeech(rawText);
+    if (!spokenText) return;
+
+    const utterance = new SpeechSynthesisUtterance(spokenText);
+    utterance.rate = 1.0;
+    utterance.pitch = 1.0;
+    window.speechSynthesis.speak(utterance);
   }
 
   // --- Password Strength & Validation ---
@@ -194,7 +450,7 @@
     passwordStrengthBar.style.width = `${percent}%`;
 
     if (!val) {
-      passwordStrengthBar.style.backgroundColor = '#cbd5e1';
+      passwordStrengthBar.style.backgroundColor = '#334155';
       passwordStrengthText.textContent =
         'Use 8+ characters with uppercase, lowercase, a number, and a special character.';
       passwordStrengthText.style.color = 'var(--text-muted)';
@@ -204,15 +460,15 @@
     if (score <= 2) {
       passwordStrengthBar.style.backgroundColor = '#ef4444';
       passwordStrengthText.textContent = 'Weak password — add 8+ chars, upper/lowercase, number & symbol.';
-      passwordStrengthText.style.color = '#b91c1c';
+      passwordStrengthText.style.color = '#fca5a5';
     } else if (score < 5 || !isStrong) {
       passwordStrengthBar.style.backgroundColor = '#f59e0b';
       passwordStrengthText.textContent = 'Moderate password — include all 5 requirements for a strong password.';
-      passwordStrengthText.style.color = '#b45309';
+      passwordStrengthText.style.color = '#fcd34d';
     } else {
       passwordStrengthBar.style.backgroundColor = '#10b981';
       passwordStrengthText.textContent = 'Strong password ready.';
-      passwordStrengthText.style.color = '#047857';
+      passwordStrengthText.style.color = '#6ee7b7';
     }
   }
 
@@ -277,9 +533,11 @@
 
   function signOutUser() {
     if (isGenerating) return;
+    stopSpeaking();
+    clearSelectedAttachment();
     session = null;
     currentChatId = null;
-    pendingPromptText = null;
+    pendingPayload = null;
     closePaymentModal();
     saveSession();
     closeMobileSidebar();
@@ -291,9 +549,9 @@
   }
 
   // --- Payment Modal Helpers (10 KES for 24h Access) ---
-  function openPaymentModal(queuedPrompt = null) {
-    if (queuedPrompt) {
-      pendingPromptText = queuedPrompt;
+  function openPaymentModal(queuedPayload = null) {
+    if (queuedPayload) {
+      pendingPayload = queuedPayload;
     }
     setPaymentStatus('', '');
     paymentModal.classList.remove('hidden');
@@ -396,13 +654,13 @@
         activate24hPass(data.checkoutRequestId || usage.lastCheckoutId || '');
         setPaymentStatus('Payment verified! Your 24-hour access is now active.', 'success');
 
-        const promptToResume = pendingPromptText;
-        pendingPromptText = null;
+        const queued = pendingPayload;
+        pendingPayload = null;
 
         setTimeout(() => {
           closePaymentModal();
-          if (promptToResume) {
-            handleSendMessage(promptToResume);
+          if (queued) {
+            handleSendMessage(queued.text, queued.attachment);
           }
         }, 650);
       } else {
@@ -664,7 +922,7 @@
 
     const img = document.createElement('img');
     img.src = 'avatar.png';
-    img.alt = 'Metrix AI 01';
+    img.alt = 'Matrix AI';
     img.onerror = () => wrapper.classList.add('img-failed');
 
     const fallback = document.createElement('div');
@@ -749,7 +1007,21 @@
     if (msg.role === 'user') {
       const bubble = document.createElement('div');
       bubble.className = 'user-bubble';
-      bubble.textContent = msg.content;
+
+      if (msg.imageUrl) {
+        const imgEl = document.createElement('img');
+        imgEl.src = msg.imageUrl;
+        imgEl.alt = 'Uploaded study image';
+        imgEl.className = 'user-bubble-image';
+        bubble.appendChild(imgEl);
+      }
+
+      if (msg.content) {
+        const textNode = document.createElement('div');
+        textNode.textContent = msg.content;
+        bubble.appendChild(textNode);
+      }
+
       row.appendChild(bubble);
     } else {
       const avatar = createAvatarElement();
@@ -774,6 +1046,21 @@
             copyBtn.innerHTML = '<i class="fa-regular fa-copy"></i><span>Copy</span>';
           }, 1800);
         });
+      });
+
+      const speakBtn = document.createElement('button');
+      speakBtn.type = 'button';
+      speakBtn.className = 'action-btn';
+      speakBtn.title = 'Read reply aloud';
+      speakBtn.innerHTML = '<i class="fa-solid fa-volume-high"></i><span>Listen</span>';
+      speakBtn.addEventListener('click', () => {
+        if ('speechSynthesis' in window) {
+          stopSpeaking();
+          const spokenText = cleanTextForSpeech(msg.content);
+          if (spokenText) {
+            window.speechSynthesis.speak(new SpeechSynthesisUtterance(spokenText));
+          }
+        }
       });
 
       const timeSpan = document.createElement('span');
@@ -807,6 +1094,7 @@
       });
 
       actionBar.appendChild(copyBtn);
+      actionBar.appendChild(speakBtn);
       actionBar.appendChild(timeSpan);
       actionBar.appendChild(upBtn);
       actionBar.appendChild(downBtn);
@@ -840,7 +1128,7 @@
     const bubble = document.createElement('div');
     bubble.className = 'assistant-bubble';
     bubble.innerHTML = `
-      <div class="typing-dots" aria-label="Metrix AI 01 is typing">
+      <div class="typing-dots" aria-label="Matrix AI is typing">
         <span></span><span></span><span></span>
       </div>
     `;
@@ -864,6 +1152,7 @@
   // --- Chat Lifecycle ---
   function startNewChat(closeSidebar = true) {
     if (isGenerating) return;
+    stopSpeaking();
     const unitName = session?.selectedUnit || 'General Studies';
     const unitChats = getUnitChats();
 
@@ -897,6 +1186,7 @@
     renderSidebar();
     renderMessages();
     messageInput.value = '';
+    clearSelectedAttachment();
     autoResizeInput();
     updateSendButtonState();
     if (closeSidebar) closeMobileSidebar();
@@ -905,6 +1195,7 @@
 
   function openChat(chatId) {
     if (isGenerating) return;
+    stopSpeaking();
     currentChatId = chatId;
     renderSidebar();
     renderMessages();
@@ -928,16 +1219,27 @@
     }
   }
 
-  // --- Sending Messages ---
-  async function handleSendMessage(overrideText = null) {
+  // --- Sending Messages (Text + Optional Photo) ---
+  async function handleSendMessage(overrideText = null, overrideAttachment = null) {
     if (isGenerating) return;
 
+    if (isListening && recognition) {
+      try {
+        recognition.stop();
+      } catch {
+        // Ignore
+      }
+    }
+    stopSpeaking();
+
     const text = (overrideText !== null ? overrideText : messageInput.value).trim();
-    if (!text) return;
+    const attachmentToSend = overrideAttachment !== null ? overrideAttachment : selectedAttachment;
+
+    if (!text && !attachmentToSend) return;
 
     // Enforce 10 free questions unless student has an active 24-hour pass
     if (!canAskQuestion()) {
-      openPaymentModal(text);
+      openPaymentModal({ text, attachment: attachmentToSend });
       return;
     }
 
@@ -953,14 +1255,17 @@
       currentChatId = chat.id;
     }
 
+    const displayUserText = text || 'Analyze this image and answer based on the selected unit.';
     const hasPriorUserMsg = chat.messages.some((m) => m.role === 'user');
     if (!hasPriorUserMsg) {
-      chat.title = text.length > 36 ? text.slice(0, 36) + '...' : text;
+      const titleSource = text || 'Image Question';
+      chat.title = titleSource.length > 36 ? titleSource.slice(0, 36) + '...' : titleSource;
     }
 
     const userMsg = {
       role: 'user',
-      content: text,
+      content: displayUserText,
+      imageUrl: attachmentToSend ? attachmentToSend.previewUrl : null,
       time: formatTime(),
     };
     chat.messages.push(userMsg);
@@ -968,6 +1273,7 @@
     saveChatsByUnit();
 
     messageInput.value = '';
+    clearSelectedAttachment();
     autoResizeInput();
     updateSendButtonState();
     welcomeScreen.classList.add('hidden');
@@ -984,12 +1290,22 @@
         .filter((m) => !m.isError && !m.isGreeting && (m.role === 'user' || m.role === 'assistant'))
         .map((m) => ({ role: m.role, content: m.content }));
 
+      const activeUnit = session?.selectedUnit || 'General Studies';
+      const usage = getUserUsage();
+
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          message: text,
+          unit: activeUnit,
+          selectedUnit: activeUnit,
+          imageBase64: attachmentToSend ? attachmentToSend.base64 : null,
+          mimeType: attachmentToSend ? attachmentToSend.mimeType : null,
+          email: session?.email || '',
+          questionsUsed: usage.questionsUsed || 0,
+          passExpiresAt: usage.passExpiresAt || 0,
           messages: apiMessages,
-          selectedUnit: session?.selectedUnit || 'General Studies',
         }),
       });
 
@@ -997,7 +1313,7 @@
       removeTypingIndicator();
 
       if (!response.ok || !data.reply) {
-        const errText = data.error || 'Something went wrong while contacting Metrix AI 01. Please try again.';
+        const errText = data.error || 'Something went wrong while contacting Matrix AI. Please try again.';
         const errMsg = {
           role: 'assistant',
           content: errText,
@@ -1018,8 +1334,9 @@
         chat.messages.push(aiMsg);
         saveChatsByUnit();
         appendMessageToDOM(aiMsg, chat.messages.length - 1);
+        speakAssistantReply(data.reply);
       }
-    } catch (err) {
+    } catch {
       removeTypingIndicator();
       const networkErrMsg = {
         role: 'assistant',
@@ -1045,7 +1362,8 @@
   }
 
   function updateSendButtonState() {
-    sendBtn.disabled = isGenerating || messageInput.value.trim().length === 0;
+    const hasContent = messageInput.value.trim().length > 0 || Boolean(selectedAttachment);
+    sendBtn.disabled = isGenerating || !hasContent;
   }
 
   function openMobileSidebar() {
@@ -1131,6 +1449,7 @@
 
   switchUnitBtn.addEventListener('click', () => {
     if (isGenerating || !session) return;
+    stopSpeaking();
     session.selectedUnit = null;
     saveSession();
     syncViewState();
@@ -1139,6 +1458,64 @@
   signOutBtn.addEventListener('click', signOutUser);
   sidebarSignOutBtn.addEventListener('click', signOutUser);
 
+  // Photo Attachment Controls
+  photoAttachBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    photoPickerMenu.classList.toggle('hidden');
+  });
+
+  takePhotoOptionBtn.addEventListener('click', () => {
+    photoPickerMenu.classList.add('hidden');
+    cameraFileInput.click();
+  });
+
+  chooseGalleryOptionBtn.addEventListener('click', () => {
+    photoPickerMenu.classList.add('hidden');
+    galleryFileInput.click();
+  });
+
+  galleryFileInput.addEventListener('change', (e) => {
+    const file = e.target.files?.[0];
+    if (file) processSelectedImageFile(file);
+  });
+
+  cameraFileInput.addEventListener('change', (e) => {
+    const file = e.target.files?.[0];
+    if (file) processSelectedImageFile(file);
+  });
+
+  removeAttachmentBtn.addEventListener('click', clearSelectedAttachment);
+
+  document.addEventListener('click', (e) => {
+    if (!photoPickerMenu.classList.contains('hidden') && !photoPickerMenu.contains(e.target) && e.target !== photoAttachBtn) {
+      photoPickerMenu.classList.add('hidden');
+    }
+  });
+
+  // Microphone & Voice Reply Controls
+  micVoiceBtn.addEventListener('click', toggleMicrophoneListening);
+
+  stopVoiceBannerBtn.addEventListener('click', () => {
+    if (isListening && recognition) {
+      try {
+        recognition.stop();
+      } catch {
+        // Ignore
+      }
+    }
+    hideVoiceOrInputNotice();
+  });
+
+  voiceReplyToggleBtn.addEventListener('click', () => {
+    voiceReplyEnabled = !voiceReplyEnabled;
+    saveVoiceReplyPref(voiceReplyEnabled);
+    updateVoiceReplyToggleUI();
+    if (!voiceReplyEnabled) {
+      stopSpeaking();
+    }
+  });
+
+  // Payment Modal Controls
   closePaymentModalBtn.addEventListener('click', closePaymentModal);
   paymentModal.addEventListener('click', (e) => {
     if (e.target === paymentModal) closePaymentModal();
@@ -1146,6 +1523,7 @@
   paymentForm.addEventListener('submit', initiateTenBobPayment);
   verifyPaymentBtn.addEventListener('click', verifyTenBobPayment);
 
+  // Textarea & Send Controls
   messageInput.addEventListener('input', () => {
     autoResizeInput();
     updateSendButtonState();
