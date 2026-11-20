@@ -52,7 +52,7 @@ function buildGeminiContents(historyTurns, resolvedUserText, imageBase64, mimeTy
   ];
 }
 
-async function callGemini({ apiKey, model, selectedUnit, historyTurns, resolvedUserText, imageBase64, mimeType }) {
+async function callGeminiSingleModel({ apiKey, model, selectedUnit, historyTurns, resolvedUserText, imageBase64, mimeType }) {
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
     model
   )}:generateContent?key=${encodeURIComponent(apiKey)}`;
@@ -78,7 +78,7 @@ async function callGemini({ apiKey, model, selectedUnit, historyTurns, resolvedU
 
   const data = await response.json().catch(() => null);
   if (!response.ok) {
-    const errMsg = data?.error?.message || `Gemini returned status ${response.status}.`;
+    const errMsg = data?.error?.message || `Gemini (${model}) returned status ${response.status}.`;
     const err = new Error(errMsg);
     err.status = response.status;
     throw err;
@@ -93,9 +93,43 @@ async function callGemini({ apiKey, model, selectedUnit, historyTurns, resolvedU
     : '';
 
   if (!reply) {
-    throw new Error('Received an empty response from Gemini.');
+    throw new Error(`Received an empty response from Gemini (${model}).`);
   }
   return reply;
+}
+
+async function callGemini({ apiKey, preferredModel, selectedUnit, historyTurns, resolvedUserText, imageBase64, mimeType }) {
+  const candidateModels = Array.from(
+    new Set([
+      preferredModel,
+      'gemini-3.8-flash',
+      'gemini-3.5-flash-lite',
+      'gemini-2.5-flash',
+    ].filter(Boolean))
+  );
+
+  let lastErr = null;
+  for (const model of candidateModels) {
+    try {
+      return await callGeminiSingleModel({
+        apiKey,
+        model,
+        selectedUnit,
+        historyTurns,
+        resolvedUserText,
+        imageBase64,
+        mimeType,
+      });
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw lastErr || new Error('All Gemini candidate models failed.');
+}
+
+function normalizeGroqModel(rawModel, fallback) {
+  const cleaned = String(rawModel || '').trim().replace(/versalite/gi, 'versatile');
+  return cleaned || fallback;
 }
 
 async function callGroq({ apiKey, selectedUnit, historyMessages, resolvedUserText, imageBase64, mimeType }) {
@@ -126,8 +160,8 @@ async function callGroq({ apiKey, selectedUnit, historyMessages, resolvedUserTex
         ];
 
   const model = imageBase64
-    ? (process.env.GROQ_VISION_MODEL || 'meta-llama/llama-4-scout-17b-16e-instruct').trim()
-    : (process.env.GROQ_MODEL || 'llama-3.3-70b-versatile').trim();
+    ? normalizeGroqModel(process.env.GROQ_VISION_MODEL, 'meta-llama/llama-4-scout-17b-16e-instruct')
+    : normalizeGroqModel(process.env.GROQ_MODEL, 'llama-3.3-70b-versatile');
 
   const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
@@ -174,7 +208,7 @@ export default async function handler(req, res) {
     });
   }
 
-  const geminiModel = (process.env.GEMINI_MODEL || 'gemini-2.5-flash').trim();
+  const preferredGeminiModel = (process.env.GEMINI_MODEL || 'gemini-3.8-flash').trim();
 
   try {
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
@@ -230,13 +264,14 @@ export default async function handler(req, res) {
     }
 
     let reply = null;
-    let lastError = null;
+    let geminiError = null;
+    let groqError = null;
 
     if (geminiApiKey) {
       try {
         reply = await callGemini({
           apiKey: geminiApiKey,
-          model: geminiModel,
+          preferredModel: preferredGeminiModel,
           selectedUnit,
           historyTurns,
           resolvedUserText,
@@ -244,28 +279,42 @@ export default async function handler(req, res) {
           mimeType,
         });
       } catch (err) {
-        lastError = err;
-        console.warn('Gemini call failed, falling back to Groq if available:', err?.message || err);
+        geminiError = err;
+        console.warn('Gemini call failed:', err?.message || err);
       }
     }
 
     if (!reply && groqApiKey) {
-      reply = await callGroq({
-        apiKey: groqApiKey,
-        selectedUnit,
-        historyMessages,
-        resolvedUserText,
-        imageBase64,
-        mimeType,
-      });
+      try {
+        reply = await callGroq({
+          apiKey: groqApiKey,
+          selectedUnit,
+          historyMessages,
+          resolvedUserText,
+          imageBase64,
+          mimeType,
+        });
+      } catch (err) {
+        groqError = err;
+        console.warn('Groq fallback call failed:', err?.message || err);
+      }
     }
 
     if (!reply) {
-      const status = lastError?.status && lastError.status >= 400 && lastError.status < 600
-        ? lastError.status
-        : 502;
+      const combinedMessage = [
+        geminiError ? `Gemini error: ${geminiError.message}` : null,
+        groqError ? `Groq fallback error: ${groqError.message}` : null,
+      ]
+        .filter(Boolean)
+        .join(' | ');
+
+      const status =
+        (groqError?.status && groqError.status >= 400 && groqError.status < 600 && groqError.status) ||
+        (geminiError?.status && geminiError.status >= 400 && geminiError.status < 600 && geminiError.status) ||
+        502;
+
       return res.status(status).json({
-        error: lastError?.message || 'Failed to receive a response from the AI service.',
+        error: combinedMessage || 'Failed to receive a response from the AI service.',
       });
     }
 
