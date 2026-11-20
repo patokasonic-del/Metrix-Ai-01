@@ -75,17 +75,13 @@
   const paymentStatusMsg = document.getElementById('paymentStatusMsg');
 
   // Application State
-  let session = loadSession(); // { email, passwordSet, selectedUnit }
+  let session = loadSession();
   let chatsByUnit = loadChatsByUnit();
-  let usageMap = loadUsageMap(); // { [email]: { questionsUsed, passExpiresAt, lastCheckoutId } }
+  let usageMap = loadUsageMap();
   let currentChatId = null;
   let isGenerating = false;
-  let pendingPayload = null; // { text, attachment }
-
-  // Selected Photo State: { base64, mimeType, previewUrl, fileName }
+  let pendingPayload = null;
   let selectedAttachment = null;
-
-  // Speech Recognition & Synthesis State
   let recognition = null;
   let isListening = false;
   let voiceReplyEnabled = loadVoiceReplyPref();
@@ -94,6 +90,9 @@
   initSpeechRecognition();
   updateVoiceReplyToggleUI();
   syncViewState();
+  if (session?.email) {
+    syncStudentFromSupabase();
+  }
 
   // --- Session, Chat & Usage Storage Helpers ---
   function loadSession() {
@@ -181,6 +180,41 @@
     return usageMap[emailKey];
   }
 
+  function applyServerUsage(email, questionsUsed, passExpiresAt) {
+    const emailKey = String(email || session?.email || 'guest').toLowerCase();
+    const current = getUserUsage();
+    usageMap[emailKey] = {
+      ...current,
+      questionsUsed: typeof questionsUsed === 'number' ? questionsUsed : current.questionsUsed,
+      passExpiresAt: typeof passExpiresAt === 'number' ? passExpiresAt : current.passExpiresAt,
+    };
+    saveUsageMap();
+  }
+
+  async function syncStudentFromSupabase() {
+    if (!session?.email) return;
+    try {
+      const response = await fetch('/api/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'sync',
+          email: session.email,
+        }),
+      });
+      const data = await response.json().catch(() => null);
+      if (response.ok && data?.student) {
+        applyServerUsage(
+          data.student.email,
+          data.student.questionsUsed,
+          data.student.passExpiresAt
+        );
+      }
+    } catch {
+      // Offline fallback uses cached usageMap
+    }
+  }
+
   function hasActive24hPass() {
     const usage = getUserUsage();
     return typeof usage.passExpiresAt === 'number' && usage.passExpiresAt > Date.now();
@@ -190,13 +224,6 @@
     if (hasActive24hPass()) return true;
     const usage = getUserUsage();
     return (usage.questionsUsed || 0) < FREE_QUESTION_LIMIT;
-  }
-
-  function recordQuestionSent() {
-    if (hasActive24hPass()) return;
-    const usage = getUserUsage();
-    usage.questionsUsed = (usage.questionsUsed || 0) + 1;
-    saveUsageMap();
   }
 
   function activate24hPass(checkoutId = '') {
@@ -219,12 +246,11 @@
     return list.find((c) => c.id === currentChatId) || null;
   }
 
-  // Clean, minimal welcome greeting
   function buildUnitGreeting() {
     return 'Welcome to Matrix AI! What can I help you with today?';
   }
 
-  // --- Image Processing & Compression via HTML5 Canvas ---
+  // --- Image Processing & Compression ---
   function processSelectedImageFile(file) {
     if (!file) return;
     if (!ALLOWED_MIME_TYPES.includes(file.type)) {
@@ -294,7 +320,7 @@
     updateSendButtonState();
   }
 
-  // --- Speech Recognition (Microphone Input) & Speech Synthesis (Voice Reply) ---
+  // --- Speech Recognition & Speech Synthesis ---
   function showVoiceOrInputNotice(message, isError = false, showStop = false) {
     voiceStatusText.textContent = message;
     voiceStatusBanner.classList.remove('hidden', 'error');
@@ -377,7 +403,7 @@
       try {
         recognition.stop();
       } catch {
-        // Ignore stop error
+        // Ignore
       }
       return;
     }
@@ -521,7 +547,7 @@
     }
   }
 
-  function selectUnitAndOpenChat(unitName) {
+  async function selectUnitAndOpenChat(unitName) {
     const cleanUnit = String(unitName || '').trim();
     if (!cleanUnit) return;
     session.selectedUnit = cleanUnit;
@@ -529,6 +555,18 @@
     currentChatId = null;
     syncViewState();
     messageInput.focus();
+
+    if (session?.email) {
+      fetch('/api/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'update_unit',
+          email: session.email,
+          selectedUnit: cleanUnit,
+        }),
+      }).catch(() => null);
+    }
   }
 
   function signOutUser() {
@@ -651,6 +689,8 @@
 
       const data = await response.json().catch(() => ({}));
       if (response.ok && data.paid) {
+        const expiresAt = data.passExpiresAt || Date.now() + PASS_DURATION_MS;
+        applyServerUsage(session?.email, usage.questionsUsed, expiresAt);
         activate24hPass(data.checkoutRequestId || usage.lastCheckoutId || '');
         setPaymentStatus('Payment verified! Your 24-hour access is now active.', 'success');
 
@@ -1219,7 +1259,7 @@
     }
   }
 
-  // --- Sending Messages (Text + Optional Photo) ---
+  // --- Sending Messages ---
   async function handleSendMessage(overrideText = null, overrideAttachment = null) {
     if (isGenerating) return;
 
@@ -1237,7 +1277,6 @@
 
     if (!text && !attachmentToSend) return;
 
-    // Enforce 10 free questions unless student has an active 24-hour pass
     if (!canAskQuestion()) {
       openPaymentModal({ text, attachment: attachmentToSend });
       return;
@@ -1269,7 +1308,6 @@
       time: formatTime(),
     };
     chat.messages.push(userMsg);
-    recordQuestionSent();
     saveChatsByUnit();
 
     messageInput.value = '';
@@ -1312,6 +1350,20 @@
       const data = await response.json().catch(() => ({}));
       removeTypingIndicator();
 
+      if (response.status === 402 || data.code === 'PAYMENT_REQUIRED') {
+        applyServerUsage(
+          session?.email,
+          data.questionsUsed ?? FREE_QUESTION_LIMIT,
+          data.passExpiresAt ?? 0
+        );
+        // Remove the unsent user message from the chat view and open payment pop-up
+        chat.messages.pop();
+        saveChatsByUnit();
+        renderMessages();
+        openPaymentModal({ text, attachment: attachmentToSend });
+        return;
+      }
+
       if (!response.ok || !data.reply) {
         const errText = data.error || 'Something went wrong while contacting Matrix AI. Please try again.';
         const errMsg = {
@@ -1325,6 +1377,7 @@
         saveChatsByUnit();
         appendMessageToDOM(errMsg, chat.messages.length - 1);
       } else {
+        applyServerUsage(session?.email, data.questionsUsed, data.passExpiresAt);
         const aiMsg = {
           role: 'assistant',
           content: data.reply,
@@ -1387,11 +1440,11 @@
       : '<i class="fa-regular fa-eye"></i>';
   });
 
-  authForm.addEventListener('submit', (e) => {
+  authForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     clearAuthError();
 
-    const email = studentEmailInput.value.trim();
+    const email = studentEmailInput.value.trim().toLowerCase();
     const password = studentPasswordInput.value;
     const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
@@ -1410,13 +1463,46 @@
       return;
     }
 
-    session = {
-      email,
-      passwordSet: true,
-      selectedUnit: session?.email === email ? session.selectedUnit || null : null,
-    };
-    saveSession();
-    syncViewState();
+    const submitBtn = authForm.querySelector('button[type="submit"]');
+    const origBtnHtml = submitBtn.innerHTML;
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span>Signing in...</span><i class="fa-solid fa-spinner fa-spin"></i>';
+
+    try {
+      const response = await fetch('/api/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'login',
+          email,
+          password,
+        }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.student) {
+        showAuthError(data.error || 'Could not sign in. Please check your credentials and try again.');
+        return;
+      }
+
+      session = {
+        email: data.student.email,
+        passwordSet: true,
+        selectedUnit: data.student.selectedUnit || null,
+      };
+      applyServerUsage(
+        data.student.email,
+        data.student.questionsUsed,
+        data.student.passExpiresAt
+      );
+      saveSession();
+      syncViewState();
+    } catch {
+      showAuthError('Network error while connecting to student database. Please try again.');
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = origBtnHtml;
+    }
   });
 
   unitsGrid.querySelectorAll('.unit-option-btn').forEach((btn) => {
