@@ -2,6 +2,7 @@ const ALLOWED_IMAGE_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const UPSTREAM_TIMEOUT_MS = 20000;
 const PRIMARY_GEMINI_MODEL = 'gemini-3.8-flash';
 const FALLBACK_GEMINI_MODEL = 'gemini-3.5-flash-lite';
+const FREE_QUESTION_LIMIT = 10;
 
 function buildSystemInstruction(selectedUnit = 'General Academic Studies') {
   return `You are Matrix AI (Metrix AI 01), an academic tutor created by Patrick Njoroge at Structura Digital Solutions (Digital solution agency), designed to help university and college students—especially in Kenyan universities (such as Murang'a University, JKUAT, UoN, TUK, KU, Egerton, and CUE/TVET engineering curricula).
@@ -27,6 +28,32 @@ ENGINEERING DRAWING — STEP-BY-STEP CONSTRUCTION + ACTUAL INTERPENETRATING CURV
 - When a student asks how to solve or draw an Engineering Drawing problem (such as curves of interpenetration between two intersecting solids/cylinders/prisms, orthographic projection, isometric views, or sectioning):
   1. First, provide a clear, numbered step-by-step construction guide explaining the exact procedure from start to finish (including reference line XY, projection lines, cutting planes/section lines, finding intersection points, and transferring true/projected points).
   2. Next, when the student asks for a diagram/visual or asks how an interpenetrating curve looks, render an actual, clear technical diagram inside a \`\`\`svg fenced code block showing the interpenetrating curves clearly (along with clean orthographic/projection layout details, XY reference line, labeled intersection points such as 1, 2, 3... / a', b', c', centerlines, and hidden/visible edges) rather than random or imaginary shapes.`;
+}
+
+async function supabaseRequest(path, options = {}) {
+  const supabaseUrl = (process.env.SUPABASE_URL || '').trim().replace(/\/+$/, '');
+  const serviceKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
+
+  if (!supabaseUrl || !serviceKey) {
+    return null;
+  }
+
+  const response = await fetch(`${supabaseUrl}/rest/v1/${path}`, {
+    ...options,
+    headers: {
+      apikey: serviceKey,
+      Authorization: `Bearer ${serviceKey}`,
+      'Content-Type': 'application/json',
+      Prefer: 'return=representation',
+      ...(options.headers || {}),
+    },
+  });
+
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(data?.message || `Supabase error (${response.status})`);
+  }
+  return data;
 }
 
 async function fetchWithTimeout(url, options = {}, timeoutMs = UPSTREAM_TIMEOUT_MS) {
@@ -127,11 +154,38 @@ export default async function handler(req, res) {
 
   try {
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+    const email = String(body?.email || '').trim().toLowerCase();
     const rawUnit = body?.unit || body?.selectedUnit || '';
     const selectedUnit =
       typeof rawUnit === 'string' && rawUnit.trim()
         ? rawUnit.trim().slice(0, 120)
         : 'General Academic Studies';
+
+    // Check student's free trial & 24-hour pass status in Supabase
+    let studentRecord = null;
+    if (email) {
+      const rows = await supabaseRequest(
+        `students?email=eq.${encodeURIComponent(email)}&select=*`
+      ).catch(() => null);
+      studentRecord = Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
+
+      if (studentRecord) {
+        const passExpiresMs = studentRecord.pass_expires_at
+          ? new Date(studentRecord.pass_expires_at).getTime()
+          : 0;
+        const hasValidPass = passExpiresMs > Date.now();
+        const used = studentRecord.questions_used || 0;
+
+        if (!hasValidPass && used >= FREE_QUESTION_LIMIT) {
+          return res.status(402).json({
+            code: 'PAYMENT_REQUIRED',
+            error: 'You have used your 10 free questions or your 24-hour pass has expired. Pay 10 KES to continue.',
+            questionsUsed: used,
+            passExpiresAt: passExpiresMs,
+          });
+        }
+      }
+    }
 
     const imageBase64 =
       typeof body?.imageBase64 === 'string' && body.imageBase64.trim()
@@ -175,26 +229,55 @@ export default async function handler(req, res) {
 
     const contents = buildGeminiContents(historyTurns, resolvedUserText, imageBase64, mimeType);
 
+    let reply = null;
     try {
-      const reply = await callGeminiModel({
+      reply = await callGeminiModel({
         apiKey,
         model: primaryModel,
         selectedUnit,
         contents,
       });
-      return res.status(200).json({ reply });
     } catch (primaryError) {
       if (fallbackModel && fallbackModel !== primaryModel) {
-        const reply = await callGeminiModel({
+        reply = await callGeminiModel({
           apiKey,
           model: fallbackModel,
           selectedUnit,
           contents,
         });
-        return res.status(200).json({ reply });
+      } else {
+        throw primaryError;
       }
-      throw primaryError;
     }
+
+    // Increment questions_used in Supabase if the student does not currently have an active 24h pass
+    let updatedQuestionsUsed = studentRecord?.questions_used || 0;
+    let updatedPassExpiresAt = studentRecord?.pass_expires_at
+      ? new Date(studentRecord.pass_expires_at).getTime()
+      : 0;
+
+    if (studentRecord) {
+      const hasValidPass = updatedPassExpiresAt > Date.now();
+      if (!hasValidPass) {
+        updatedQuestionsUsed += 1;
+        await supabaseRequest(
+          `students?email=eq.${encodeURIComponent(email)}`,
+          {
+            method: 'PATCH',
+            body: JSON.stringify({
+              questions_used: updatedQuestionsUsed,
+              updated_at: new Date().toISOString(),
+            }),
+          }
+        ).catch(() => null);
+      }
+    }
+
+    return res.status(200).json({
+      reply,
+      questionsUsed: updatedQuestionsUsed,
+      passExpiresAt: updatedPassExpiresAt,
+    });
   } catch (error) {
     const message =
       error?.name === 'AbortError'
