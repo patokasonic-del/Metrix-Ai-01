@@ -169,8 +169,9 @@
     return list.find((c) => c.id === currentChatId) || null;
   }
 
-  function buildUnitGreeting(unitName) {
-    return `Hello! Welcome to **Metrix AI 01**. I am now specialized for **${unitName}**.\n\nI can help you with concepts, course outlines, step-by-step problem solving, Kenyan university past paper practice, and clear explanations. How can I help you with **${unitName}** today?`;
+  // Clean, minimal welcome greeting (no extra paragraphs or topic lists)
+  function buildUnitGreeting() {
+    return 'Welcome to Matrix AI! What can I help you with today?';
   }
 
   // --- Password Strength & Validation ---
@@ -249,7 +250,7 @@
     chatApp.classList.remove('hidden');
 
     activeUnitText.textContent = session.selectedUnit;
-    welcomeSubtitle.textContent = `Specialized study mode active for ${session.selectedUnit} (Kenyan university curricula, past papers, step-by-step solutions, code, and engineering diagrams).`;
+    welcomeSubtitle.textContent = 'Welcome to Matrix AI! What can I help you with today?';
 
     const unitChats = getUnitChats();
     if (!unitChats.some((c) => c.id === currentChatId)) {
@@ -881,7 +882,7 @@
       messages: [
         {
           role: 'assistant',
-          content: buildUnitGreeting(unitName),
+          content: buildUnitGreeting(),
           time: formatTime(),
           feedback: null,
           isGreeting: true,
