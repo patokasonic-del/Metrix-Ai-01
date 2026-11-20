@@ -1,6 +1,7 @@
 const ALLOWED_IMAGE_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
-const UPSTREAM_TIMEOUT_MS = 18000;
-const GEMINI_MODEL = 'gemini-3.8-flash';
+const UPSTREAM_TIMEOUT_MS = 20000;
+const PRIMARY_GEMINI_MODEL = 'gemini-3.8-flash';
+const FALLBACK_GEMINI_MODEL = 'gemini-3.5-flash-lite';
 
 function buildSystemInstruction(selectedUnit = 'General Academic Studies') {
   return `You are Matrix AI (Metrix AI 01), an academic tutor created by Patrick Njoroge at Structura Digital Solutions (Digital solution agency), designed to help university and college students—especially in Kenyan universities (such as Murang'a University, JKUAT, UoN, TUK, KU, Egerton, and CUE/TVET engineering curricula).
@@ -59,12 +60,53 @@ function buildGeminiContents(historyTurns, resolvedUserText, imageBase64, mimeTy
     turns = [...turns, { role: 'user', parts: latestParts }];
   }
 
-  // Gemini requires the conversation turns to start with 'user'
   while (turns.length > 0 && turns[0].role !== 'user') {
     turns.shift();
   }
 
   return turns;
+}
+
+async function callGeminiModel({ apiKey, model, selectedUnit, contents }) {
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+    model
+  )}:generateContent?key=${encodeURIComponent(apiKey)}`;
+
+  const response = await fetchWithTimeout(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      system_instruction: {
+        parts: [{ text: buildSystemInstruction(selectedUnit) }],
+      },
+      contents,
+      generationConfig: {
+        maxOutputTokens: 1500,
+      },
+    }),
+  });
+
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    const errMsg = data?.error?.message || `Gemini returned status ${response.status}.`;
+    const err = new Error(errMsg);
+    err.status = response.status;
+    throw err;
+  }
+
+  const parts = data?.candidates?.[0]?.content?.parts;
+  const reply = Array.isArray(parts)
+    ? parts
+        .map((p) => (typeof p?.text === 'string' ? p.text : ''))
+        .join('')
+        .trim()
+    : '';
+
+  if (!reply) {
+    throw new Error('Received an empty response from Matrix AI.');
+  }
+
+  return reply;
 }
 
 export default async function handler(req, res) {
@@ -80,7 +122,8 @@ export default async function handler(req, res) {
     });
   }
 
-  const model = (process.env.GEMINI_MODEL || GEMINI_MODEL).trim();
+  const primaryModel = (process.env.GEMINI_MODEL || PRIMARY_GEMINI_MODEL).trim();
+  const fallbackModel = (process.env.GEMINI_FALLBACK_MODEL || FALLBACK_GEMINI_MODEL).trim();
 
   try {
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
@@ -131,49 +174,33 @@ export default async function handler(req, res) {
     }
 
     const contents = buildGeminiContents(historyTurns, resolvedUserText, imageBase64, mimeType);
-    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
-      model
-    )}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
-    const geminiResponse = await fetchWithTimeout(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        system_instruction: {
-          parts: [{ text: buildSystemInstruction(selectedUnit) }],
-        },
+    try {
+      const reply = await callGeminiModel({
+        apiKey,
+        model: primaryModel,
+        selectedUnit,
         contents,
-        generationConfig: {
-          maxOutputTokens: 1500,
-        },
-      }),
-    });
-
-    const data = await geminiResponse.json().catch(() => null);
-    if (!geminiResponse.ok) {
-      const apiErrMessage =
-        data?.error?.message || `Gemini returned status ${geminiResponse.status}.`;
-      return res.status(geminiResponse.status).json({ error: apiErrMessage });
+      });
+      return res.status(200).json({ reply });
+    } catch (primaryError) {
+      if (fallbackModel && fallbackModel !== primaryModel) {
+        const reply = await callGeminiModel({
+          apiKey,
+          model: fallbackModel,
+          selectedUnit,
+          contents,
+        });
+        return res.status(200).json({ reply });
+      }
+      throw primaryError;
     }
-
-    const parts = data?.candidates?.[0]?.content?.parts;
-    const reply = Array.isArray(parts)
-      ? parts
-          .map((p) => (typeof p?.text === 'string' ? p.text : ''))
-          .join('')
-          .trim()
-      : '';
-
-    if (!reply) {
-      return res.status(502).json({ error: 'Received an empty response from Matrix AI.' });
-    }
-
-    return res.status(200).json({ reply });
   } catch (error) {
     const message =
       error?.name === 'AbortError'
         ? 'The AI request timed out. Please try a shorter prompt or try again.'
         : error?.message || 'An unexpected server error occurred while processing your request.';
-    return res.status(500).json({ error: message });
+    const status = error?.status && error.status >= 400 && error.status < 600 ? error.status : 500;
+    return res.status(status).json({ error: message });
   }
 }
