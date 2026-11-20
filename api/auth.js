@@ -17,18 +17,28 @@ async function supabaseRequest(path, options = {}) {
   const serviceKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
 
   if (!supabaseUrl || !serviceKey) {
-    throw new Error('Server configuration error: SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is missing in Vercel.');
+    const visibleKeys = Object.keys(process.env).filter((k) => k.includes('SUPABASE'));
+    throw new Error(
+      `Missing in Vercel runtime: ${!supabaseUrl ? 'SUPABASE_URL ' : ''}${
+        !serviceKey ? 'SUPABASE_SERVICE_ROLE_KEY' : ''
+      } (Found keys: ${visibleKeys.length ? visibleKeys.join(', ') : 'none'})`
+    );
+  }
+
+  const headers = {
+    apikey: serviceKey,
+    'Content-Type': 'application/json',
+    Prefer: 'return=representation',
+    ...(options.headers || {}),
+  };
+
+  if (!serviceKey.startsWith('sb_secret_')) {
+    headers.Authorization = `Bearer ${serviceKey}`;
   }
 
   const response = await fetch(`${supabaseUrl}/rest/v1/${path}`, {
     ...options,
-    headers: {
-      apikey: serviceKey,
-      Authorization: `Bearer ${serviceKey}`,
-      'Content-Type': 'application/json',
-      Prefer: 'return=representation',
-      ...(options.headers || {}),
-    },
+    headers,
   });
 
   const data = await response.json().catch(() => null);
