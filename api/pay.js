@@ -10,10 +10,29 @@ function normalizeKenyanPhone(rawPhone) {
 
 function getIntaSendBaseUrl() {
   const env = (process.env.INTASEND_ENV || '').trim().toLowerCase();
-  if (env === 'sandbox') {
-    return 'https://sandbox.intasend.com';
+  return env === 'sandbox' ? 'https://sandbox.intasend.com' : 'https://api.intasend.com';
+}
+
+async function saveTransactionToSupabase(record) {
+  const supabaseUrl = (process.env.SUPABASE_URL || '').trim().replace(/\/$/, '');
+  const serviceRoleKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
+  if (!supabaseUrl || !serviceRoleKey) return;
+
+  const res = await fetch(`${supabaseUrl}/rest/v1/transactions`, {
+    method: 'POST',
+    headers: {
+      apikey: serviceRoleKey,
+      Authorization: `Bearer ${serviceRoleKey}`,
+      'Content-Type': 'application/json',
+      Prefer: 'resolution=merge-duplicates,return=minimal',
+    },
+    body: JSON.stringify(record),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '');
+    console.error('Supabase insert transaction error:', res.status, errText);
   }
-  return 'https://api.intasend.com';
 }
 
 export default async function handler(req, res) {
@@ -36,15 +55,24 @@ export default async function handler(req, res) {
     const secretKey = (process.env.INTASEND_SECRET_KEY || '').trim();
     const demoMode = (process.env.INTASEND_DEMO_MODE || '').trim().toLowerCase() === 'true';
 
-    // Optional demo fallback when INTASEND_DEMO_MODE=true or INTASEND_SECRET_KEY is not set yet
+    // Demo fallback when INTASEND_DEMO_MODE=true or INTASEND_SECRET_KEY is not set
     if (demoMode || !secretKey) {
+      const demoId = `demo_inv_${crypto.randomBytes(6).toString('hex')}`;
+      await saveTransactionToSupabase({
+        checkout_request_id: demoId,
+        student_email: email || null,
+        phone,
+        amount: 10,
+        status: 'PENDING',
+      });
+
       return res.status(200).json({
-        checkoutRequestId: `demo_inv_${crypto.randomBytes(6).toString('hex')}`,
+        checkoutRequestId: demoId,
         phone,
         email,
         amount: 10,
         message:
-          '10 KES IntaSend STK Push prepared (Demo Mode). Click "I Have Paid — Verify Payment" to activate your 24-hour pass.',
+          '10 KES STK Push prepared (Demo Mode). Click "I Have Paid — Verify Payment" to activate your 24-hour pass.',
       });
     }
 
@@ -82,10 +110,16 @@ export default async function handler(req, res) {
       });
     }
 
-    const checkoutId =
-      data?.invoice?.invoice_id ||
-      data?.id ||
-      apiRef;
+    const checkoutId = data?.invoice?.invoice_id || data?.id || apiRef;
+
+    // Record pending transaction in Supabase
+    await saveTransactionToSupabase({
+      checkout_request_id: checkoutId,
+      student_email: email || null,
+      phone,
+      amount: 10,
+      status: 'PENDING',
+    });
 
     return res.status(200).json({
       checkoutRequestId: checkoutId,
