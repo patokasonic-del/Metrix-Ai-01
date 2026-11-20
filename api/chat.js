@@ -1,4 +1,5 @@
 const ALLOWED_IMAGE_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const UPSTREAM_TIMEOUT_MS = 18000;
 
 function buildSystemInstruction(selectedUnit = 'General Academic Studies') {
   return `You are Matrix AI (Metrix AI 01), an academic tutor created by Patrick Njoroge at Structura Digital Solutions (Digital solution agency), designed to help university and college students—especially in Kenyan universities (such as Murang'a University, JKUAT, UoN, TUK, KU, Egerton, and CUE/TVET engineering curricula).
@@ -24,6 +25,16 @@ ENGINEERING DRAWING — STEP-BY-STEP CONSTRUCTION + ACTUAL INTERPENETRATING CURV
 - When a student asks how to solve or draw an Engineering Drawing problem (such as curves of interpenetration between two intersecting solids/cylinders/prisms, orthographic projection, isometric views, or sectioning):
   1. First, provide a clear, numbered step-by-step construction guide explaining the exact procedure from start to finish (including reference line XY, projection lines, cutting planes/section lines, finding intersection points, and transferring true/projected points).
   2. Next, when the student asks for a diagram/visual or asks how an interpenetrating curve looks, render an actual, clear technical diagram inside a \`\`\`svg fenced code block showing the interpenetrating curves clearly (along with clean orthographic/projection layout details, XY reference line, labeled intersection points such as 1, 2, 3... / a', b', c', centerlines, and hidden/visible edges) rather than random or imaginary shapes.`;
+}
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = UPSTREAM_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function buildGeminiContents(historyTurns, resolvedUserText, imageBase64, mimeType) {
@@ -52,18 +63,16 @@ function buildGeminiContents(historyTurns, resolvedUserText, imageBase64, mimeTy
   ];
 }
 
-async function callGeminiSingleModel({ apiKey, model, selectedUnit, historyTurns, resolvedUserText, imageBase64, mimeType }) {
+async function callGemini({ apiKey, model, selectedUnit, historyTurns, resolvedUserText, imageBase64, mimeType }) {
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
     model
   )}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
   const contents = buildGeminiContents(historyTurns, resolvedUserText, imageBase64, mimeType);
 
-  const response = await fetch(endpoint, {
+  const response = await fetchWithTimeout(endpoint, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       system_instruction: {
         parts: [{ text: buildSystemInstruction(selectedUnit) }],
@@ -71,14 +80,14 @@ async function callGeminiSingleModel({ apiKey, model, selectedUnit, historyTurns
       contents,
       generationConfig: {
         temperature: 0.25,
-        maxOutputTokens: 4096,
+        maxOutputTokens: 1500,
       },
     }),
   });
 
   const data = await response.json().catch(() => null);
   if (!response.ok) {
-    const errMsg = data?.error?.message || `Gemini (${model}) returned status ${response.status}.`;
+    const errMsg = data?.error?.message || `Gemini returned status ${response.status}.`;
     const err = new Error(errMsg);
     err.status = response.status;
     throw err;
@@ -93,38 +102,9 @@ async function callGeminiSingleModel({ apiKey, model, selectedUnit, historyTurns
     : '';
 
   if (!reply) {
-    throw new Error(`Received an empty response from Gemini (${model}).`);
+    throw new Error('Received an empty response from Gemini.');
   }
   return reply;
-}
-
-async function callGemini({ apiKey, preferredModel, selectedUnit, historyTurns, resolvedUserText, imageBase64, mimeType }) {
-  const candidateModels = Array.from(
-    new Set([
-      preferredModel,
-      'gemini-3.8-flash',
-      'gemini-3.5-flash-lite',
-      'gemini-2.5-flash',
-    ].filter(Boolean))
-  );
-
-  let lastErr = null;
-  for (const model of candidateModels) {
-    try {
-      return await callGeminiSingleModel({
-        apiKey,
-        model,
-        selectedUnit,
-        historyTurns,
-        resolvedUserText,
-        imageBase64,
-        mimeType,
-      });
-    } catch (err) {
-      lastErr = err;
-    }
-  }
-  throw lastErr || new Error('All Gemini candidate models failed.');
 }
 
 function normalizeGroqModel(rawModel, fallback) {
@@ -163,7 +143,7 @@ async function callGroq({ apiKey, selectedUnit, historyMessages, resolvedUserTex
     ? normalizeGroqModel(process.env.GROQ_VISION_MODEL, 'meta-llama/llama-4-scout-17b-16e-instruct')
     : normalizeGroqModel(process.env.GROQ_MODEL, 'llama-3.3-70b-versatile');
 
-  const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+  const response = await fetchWithTimeout('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -173,7 +153,7 @@ async function callGroq({ apiKey, selectedUnit, historyMessages, resolvedUserTex
       model,
       messages: messagesPayload,
       temperature: 0.25,
-      max_tokens: 4096,
+      max_tokens: 1500,
     }),
   });
 
@@ -208,7 +188,7 @@ export default async function handler(req, res) {
     });
   }
 
-  const preferredGeminiModel = (process.env.GEMINI_MODEL || 'gemini-3.8-flash').trim();
+  const geminiModel = (process.env.GEMINI_MODEL || 'gemini-2.5-flash').trim();
 
   try {
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
@@ -236,6 +216,7 @@ export default async function handler(req, res) {
     const rawMessages = Array.isArray(body?.messages) ? body.messages : [];
     const directMessage = typeof body?.message === 'string' ? body.message.trim() : '';
 
+    // Send up to last 8 turns to keep latency low
     const historyMessages = rawMessages
       .filter(
         (msg) =>
@@ -244,7 +225,7 @@ export default async function handler(req, res) {
           typeof msg.content === 'string' &&
           msg.content.trim().length > 0
       )
-      .slice(-20)
+      .slice(-8)
       .map((msg) => ({
         role: msg.role,
         content: msg.content.trim(),
@@ -263,66 +244,40 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Please enter a message or upload an image.' });
     }
 
-    let reply = null;
-    let geminiError = null;
-    let groqError = null;
-
     if (geminiApiKey) {
       try {
-        reply = await callGemini({
+        const reply = await callGemini({
           apiKey: geminiApiKey,
-          preferredModel: preferredGeminiModel,
+          model: geminiModel,
           selectedUnit,
           historyTurns,
           resolvedUserText,
           imageBase64,
           mimeType,
         });
-      } catch (err) {
-        geminiError = err;
-        console.warn('Gemini call failed:', err?.message || err);
+        return res.status(200).json({ reply });
+      } catch (geminiErr) {
+        if (!groqApiKey) {
+          throw geminiErr;
+        }
       }
     }
 
-    if (!reply && groqApiKey) {
-      try {
-        reply = await callGroq({
-          apiKey: groqApiKey,
-          selectedUnit,
-          historyMessages,
-          resolvedUserText,
-          imageBase64,
-          mimeType,
-        });
-      } catch (err) {
-        groqError = err;
-        console.warn('Groq fallback call failed:', err?.message || err);
-      }
-    }
-
-    if (!reply) {
-      const combinedMessage = [
-        geminiError ? `Gemini error: ${geminiError.message}` : null,
-        groqError ? `Groq fallback error: ${groqError.message}` : null,
-      ]
-        .filter(Boolean)
-        .join(' | ');
-
-      const status =
-        (groqError?.status && groqError.status >= 400 && groqError.status < 600 && groqError.status) ||
-        (geminiError?.status && geminiError.status >= 400 && geminiError.status < 600 && geminiError.status) ||
-        502;
-
-      return res.status(status).json({
-        error: combinedMessage || 'Failed to receive a response from the AI service.',
-      });
-    }
+    const reply = await callGroq({
+      apiKey: groqApiKey,
+      selectedUnit,
+      historyMessages,
+      resolvedUserText,
+      imageBase64,
+      mimeType,
+    });
 
     return res.status(200).json({ reply });
   } catch (error) {
-    console.error('Matrix AI /api/chat error:', error);
-    return res.status(500).json({
-      error: error?.message || 'An unexpected server error occurred while processing your request.',
-    });
+    const message =
+      error?.name === 'AbortError'
+        ? 'The AI request timed out. Please try a shorter prompt or try again.'
+        : error?.message || 'An unexpected server error occurred while processing your request.';
+    return res.status(500).json({ error: message });
   }
 }
