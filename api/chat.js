@@ -1,7 +1,7 @@
 const FREE_QUESTION_LIMIT = 5;
 const FREE_WINDOW_MS = 24 * 60 * 60 * 1000;
 const GEMINI_API_URL =
-  'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
+  'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent';
 
 async function supabaseRequest(path, options = {}) {
   const supabaseUrl = (process.env.SUPABASE_URL || '').trim().replace(/\/+$/, '');
