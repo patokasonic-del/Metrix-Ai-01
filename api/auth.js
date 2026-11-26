@@ -1,5 +1,65 @@
 import crypto from 'node:crypto';
 
+const DISPOSABLE_DOMAINS = new Set([
+  'mailinator.com',
+  'tempmail.com',
+  'temp-mail.org',
+  '10minutemail.com',
+  'guerrillamail.com',
+  'guerrillamail.net',
+  'guerrillamail.org',
+  'yopmail.com',
+  'trashmail.com',
+  'getnada.com',
+  'sharklasers.com',
+  'dispostable.com',
+  'fakeinbox.com',
+  'maildrop.cc',
+  'mohmal.com',
+  'burnermail.io',
+  'discard.email',
+]);
+
+const BLOCKED_LOCAL_PARTS = new Set([
+  'test',
+  'fake',
+  'asdf',
+  'qwerty',
+  'admin',
+  'noreply',
+  'no-reply',
+  'null',
+  'undefined',
+]);
+
+function validateStudentEmail(rawEmail) {
+  const email = String(rawEmail || '').trim().toLowerCase();
+  if (!email || !/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(email)) {
+    return { valid: false, error: 'Please enter a valid student email address.' };
+  }
+
+  const [localPart, domain] = email.split('@');
+  if (!localPart || !domain || localPart.length < 2) {
+    return { valid: false, error: 'Please enter a valid student email address.' };
+  }
+
+  if (BLOCKED_LOCAL_PARTS.has(localPart)) {
+    return {
+      valid: false,
+      error: 'Please use your real personal or university email rather than a placeholder email.',
+    };
+  }
+
+  if (DISPOSABLE_DOMAINS.has(domain)) {
+    return {
+      valid: false,
+      error: 'Temporary or disposable email addresses are not allowed. Please use a permanent email.',
+    };
+  }
+
+  return { valid: true, email };
+}
+
 function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
   const derived = crypto.scryptSync(password, salt, 64).toString('hex');
   return `${salt}:${derived}`;
@@ -58,13 +118,15 @@ export default async function handler(req, res) {
   try {
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
     const action = String(body?.action || 'login').trim();
-    const email = String(body?.email || '').trim().toLowerCase();
+    const emailCheck = validateStudentEmail(body?.email);
+    if (!emailCheck.valid) {
+      return res.status(400).json({ error: emailCheck.error });
+    }
+    const email = emailCheck.email;
+
     const password = String(body?.password || '');
     const selectedUnit = typeof body?.selectedUnit === 'string' ? body.selectedUnit.trim() : null;
-
-    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      return res.status(400).json({ error: 'Please enter a valid student email address.' });
-    }
+    const deviceId = String(body?.deviceId || body?.device_id || '').trim().slice(0, 128) || null;
 
     // Look up existing student in Supabase
     const rows = await supabaseRequest(
@@ -77,14 +139,17 @@ export default async function handler(req, res) {
       if (!existingStudent) {
         return res.status(404).json({ error: 'Student account not found.' });
       }
+      const patchBody = {
+        selected_unit: selectedUnit,
+        updated_at: new Date().toISOString(),
+      };
+      if (deviceId) patchBody.device_id = deviceId;
+
       const updated = await supabaseRequest(
         `students?email=eq.${encodeURIComponent(email)}`,
         {
           method: 'PATCH',
-          body: JSON.stringify({
-            selected_unit: selectedUnit,
-            updated_at: new Date().toISOString(),
-          }),
+          body: JSON.stringify(patchBody),
         }
       );
       const student = updated?.[0] || existingStudent;
@@ -102,6 +167,18 @@ export default async function handler(req, res) {
     if (action === 'sync') {
       if (!existingStudent) {
         return res.status(404).json({ error: 'Student account not found.' });
+      }
+      if (deviceId && !existingStudent.device_id) {
+        await supabaseRequest(
+          `students?email=eq.${encodeURIComponent(email)}`,
+          {
+            method: 'PATCH',
+            body: JSON.stringify({
+              device_id: deviceId,
+              updated_at: new Date().toISOString(),
+            }),
+          }
+        ).catch(() => null);
       }
       return res.status(200).json({
         student: {
@@ -123,12 +200,24 @@ export default async function handler(req, res) {
     }
 
     if (existingStudent) {
-      // Returning student: verify their password and return their saved usage & 24h pass state
       const valid = verifyPassword(password, existingStudent.password_hash);
       if (!valid) {
         return res.status(401).json({
           error: 'Incorrect password for this student email. Please enter the password you created.',
         });
+      }
+
+      if (deviceId) {
+        await supabaseRequest(
+          `students?email=eq.${encodeURIComponent(email)}`,
+          {
+            method: 'PATCH',
+            body: JSON.stringify({
+              device_id: deviceId,
+              updated_at: new Date().toISOString(),
+            }),
+          }
+        ).catch(() => null);
       }
 
       return res.status(200).json({
@@ -152,6 +241,7 @@ export default async function handler(req, res) {
         email,
         password_hash: passwordHash,
         questions_used: 0,
+        device_id: deviceId,
       }),
     });
 
