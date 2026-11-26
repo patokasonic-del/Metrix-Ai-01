@@ -1,139 +1,56 @@
-const ALLOWED_IMAGE_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
-const UPSTREAM_TIMEOUT_MS = 20000;
-const PRIMARY_GEMINI_MODEL = 'gemini-3.8-flash';
-const FALLBACK_GEMINI_MODEL = 'gemini-3.5-flash-lite';
 const FREE_QUESTION_LIMIT = 10;
-
-function buildSystemInstruction(selectedUnit = 'General Academic Studies') {
-  return `You are Matrix AI (Metrix AI 01), an academic tutor created by Patrick Njoroge at Structura Digital Solutions (Digital solution agency), designed to help university and college students—especially in Kenyan universities (such as Murang'a University, JKUAT, UoN, TUK, KU, Egerton, and CUE/TVET engineering curricula).
-
-ACTIVE SELECTED UNIT: ${selectedUnit}
-- Prioritize accurate, exam-focused mastery of "${selectedUnit}" while supporting all core student subjects.
-
-STRICT IDENTITY RULES:
-- Your name is Matrix AI (Metrix AI 01).
-- If anyone asks who made you, who created you, who owns you, what model you are, or anything similar, answer that you are Matrix AI (Metrix AI 01), created by Patrick Njoroge at Structura Digital Solutions, to support students in computer programming, engineering physics, chemistry, mathematics, academic writing, engineering drawing, and their selected university units.
-- Never say or imply that you are Qwen, GPT, OpenAI, Llama, Groq, Grok, Claude, Gemini, or any other model or company.
-
-STRICT COMMAND-MATCHING RULES:
-- Match the student's exact command strictly and concisely. Do NOT add unnecessary fluff, unrequested examples, or long introductions/outros (never start with "Sure! Here is..." or end with summary filler).
-- If the student asks to "State" or "Define" something: Output ONLY the direct statement or definition. Do not add explanations, examples, or extra commentary.
-- If the student asks to "Explain" something: Give a clear, direct, and concise explanation without unrelated tangents or filler.
-- If the student asks to "State and explain" something: First give the exact statement/definition, then give a clear, focused explanation—nothing extra.
-- If the student asks a direct question, image question, or calculation: Give the direct answer or clean step-by-step solution without unnecessary intros or long conclusions.
-- Only provide deeper detail, past-paper questions, or extra examples if the student explicitly asks for them.
-
-ENGINEERING DRAWING — STEP-BY-STEP CONSTRUCTION + ACTUAL INTERPENETRATING CURVES VISUAL:
-- Never invent non-existent geometric features, fake parts, or imaginary lines.
-- When a student asks how to solve or draw an Engineering Drawing problem (such as curves of interpenetration between two intersecting solids/cylinders/prisms, orthographic projection, isometric views, or sectioning):
-  1. First, provide a clear, numbered step-by-step construction guide explaining the exact procedure from start to finish (including reference line XY, projection lines, cutting planes/section lines, finding intersection points, and transferring true/projected points).
-  2. Next, when the student asks for a diagram/visual or asks how an interpenetrating curve looks, render an actual, clear technical diagram inside a \`\`\`svg fenced code block showing the interpenetrating curves clearly (along with clean orthographic/projection layout details, XY reference line, labeled intersection points such as 1, 2, 3... / a', b', c', centerlines, and hidden/visible edges) rather than random or imaginary shapes.`;
-}
+const GEMINI_API_URL =
+  'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
 
 async function supabaseRequest(path, options = {}) {
   const supabaseUrl = (process.env.SUPABASE_URL || '').trim().replace(/\/+$/, '');
   const serviceKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
 
   if (!supabaseUrl || !serviceKey) {
-    return null;
+    throw new Error(
+      'Server configuration error: SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is missing in Vercel.'
+    );
+  }
+
+  const headers = {
+    apikey: serviceKey,
+    'Content-Type': 'application/json',
+    Prefer: 'return=representation',
+    ...(options.headers || {}),
+  };
+
+  if (!serviceKey.startsWith('sb_secret_')) {
+    headers.Authorization = `Bearer ${serviceKey}`;
   }
 
   const response = await fetch(`${supabaseUrl}/rest/v1/${path}`, {
     ...options,
-    headers: {
-      apikey: serviceKey,
-      Authorization: `Bearer ${serviceKey}`,
-      'Content-Type': 'application/json',
-      Prefer: 'return=representation',
-      ...(options.headers || {}),
-    },
+    headers,
   });
 
   const data = await response.json().catch(() => null);
   if (!response.ok) {
-    throw new Error(data?.message || `Supabase error (${response.status})`);
+    throw new Error(data?.message || data?.error || `Supabase error (${response.status})`);
   }
   return data;
 }
 
-async function fetchWithTimeout(url, options = {}, timeoutMs = UPSTREAM_TIMEOUT_MS) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(url, { ...options, signal: controller.signal });
-  } finally {
-    clearTimeout(timer);
-  }
+function buildSystemInstruction(unit) {
+  const cleanUnit = String(unit || 'General University Studies').trim();
+  return [
+    `You are Matrix AI, a helpful university study assistant for ${cleanUnit}.`,
+    'Explain concepts clearly, step-by-step, with accurate formulas, definitions, and examples suited to university coursework.',
+    'Keep responses well-structured and easy to follow.',
+  ].join(' ');
 }
 
-function buildGeminiContents(historyTurns, resolvedUserText, imageBase64, mimeType) {
-  const latestParts = [];
-  if (resolvedUserText) {
-    latestParts.push({ text: resolvedUserText });
-  }
-  if (imageBase64 && mimeType) {
-    latestParts.push({
-      inlineData: {
-        mimeType,
-        data: imageBase64,
-      },
-    });
-  }
-
-  let turns = [...historyTurns];
-  if (turns.length > 0 && turns[turns.length - 1].role === 'user') {
-    turns = [...turns.slice(0, -1), { role: 'user', parts: latestParts }];
-  } else {
-    turns = [...turns, { role: 'user', parts: latestParts }];
-  }
-
-  while (turns.length > 0 && turns[0].role !== 'user') {
-    turns.shift();
-  }
-
-  return turns;
-}
-
-async function callGeminiModel({ apiKey, model, selectedUnit, contents }) {
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
-    model
-  )}:generateContent?key=${encodeURIComponent(apiKey)}`;
-
-  const response = await fetchWithTimeout(endpoint, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      system_instruction: {
-        parts: [{ text: buildSystemInstruction(selectedUnit) }],
-      },
-      contents,
-      generationConfig: {
-        maxOutputTokens: 1500,
-      },
-    }),
-  });
-
-  const data = await response.json().catch(() => null);
-  if (!response.ok) {
-    const errMsg = data?.error?.message || `Gemini returned status ${response.status}.`;
-    const err = new Error(errMsg);
-    err.status = response.status;
-    throw err;
-  }
-
+function extractGeminiText(data) {
   const parts = data?.candidates?.[0]?.content?.parts;
-  const reply = Array.isArray(parts)
-    ? parts
-        .map((p) => (typeof p?.text === 'string' ? p.text : ''))
-        .join('')
-        .trim()
-    : '';
-
-  if (!reply) {
-    throw new Error('Received an empty response from Matrix AI.');
-  }
-
-  return reply;
+  if (!Array.isArray(parts)) return '';
+  return parts
+    .map((part) => (typeof part?.text === 'string' ? part.text : ''))
+    .join('')
+    .trim();
 }
 
 export default async function handler(req, res) {
@@ -142,148 +59,163 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed. Use POST.' });
   }
 
-  const apiKey = (process.env.GEMINI_API_KEY || '').trim();
-  if (!apiKey) {
+  const geminiApiKey = (process.env.GEMINI_API_KEY || '').trim();
+  if (!geminiApiKey) {
     return res.status(500).json({
       error: 'Server configuration error: GEMINI_API_KEY is missing in Vercel environment variables.',
     });
   }
 
-  const primaryModel = (process.env.GEMINI_MODEL || PRIMARY_GEMINI_MODEL).trim();
-  const fallbackModel = (process.env.GEMINI_FALLBACK_MODEL || FALLBACK_GEMINI_MODEL).trim();
-
   try {
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
     const email = String(body?.email || '').trim().toLowerCase();
-    const rawUnit = body?.unit || body?.selectedUnit || '';
-    const selectedUnit =
-      typeof rawUnit === 'string' && rawUnit.trim()
-        ? rawUnit.trim().slice(0, 120)
-        : 'General Academic Studies';
+    const promptText = String(body?.prompt || body?.message || '').trim();
+    const selectedUnit = String(body?.selectedUnit || body?.unit || 'General Studies').trim();
+    const deviceId = String(body?.deviceId || body?.device_id || '').trim().slice(0, 128) || null;
+    const imageBase64 = String(body?.imageBase64 || '').trim();
+    const imageMimeType = String(body?.imageMimeType || 'image/jpeg').trim();
 
-    // Check student's free trial & 24-hour pass status in Supabase
-    let studentRecord = null;
-    if (email) {
-      const rows = await supabaseRequest(
-        `students?email=eq.${encodeURIComponent(email)}&select=*`
-      ).catch(() => null);
-      studentRecord = Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
+    if (!email || !/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(email)) {
+      return res.status(401).json({ error: 'Please sign in with your student email first.' });
+    }
 
-      if (studentRecord) {
-        const passExpiresMs = studentRecord.pass_expires_at
-          ? new Date(studentRecord.pass_expires_at).getTime()
-          : 0;
-        const hasValidPass = passExpiresMs > Date.now();
-        const used = studentRecord.questions_used || 0;
+    if (!promptText && !imageBase64) {
+      return res.status(400).json({ error: 'Please enter a question or attach an image.' });
+    }
 
-        if (!hasValidPass && used >= FREE_QUESTION_LIMIT) {
-          return res.status(402).json({
-            code: 'PAYMENT_REQUIRED',
-            error: 'You have used your 10 free questions or your 24-hour pass has expired. Pay 10 KES to continue.',
-            questionsUsed: used,
-            passExpiresAt: passExpiresMs,
-          });
+    // 1. Fetch student record from Supabase
+    const rows = await supabaseRequest(
+      `students?email=eq.${encodeURIComponent(email)}&select=*`
+    );
+    const student = Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
+
+    if (!student) {
+      return res.status(404).json({
+        error: 'Student account not found. Please sign in again.',
+      });
+    }
+
+    const nowMs = Date.now();
+    const passExpiresAtMs = student.pass_expires_at
+      ? new Date(student.pass_expires_at).getTime()
+      : 0;
+    const hasActivePass = Number.isFinite(passExpiresAtMs) && passExpiresAtMs > nowMs;
+
+    const studentQuestionsUsed = Number(student.questions_used || 0);
+    let deviceQuestionsUsed = 0;
+
+    // 2. Check all accounts tied to this device_id to prevent free-quota resets via email switching
+    if (!hasActivePass && deviceId) {
+      const deviceRows = await supabaseRequest(
+        `students?device_id=eq.${encodeURIComponent(deviceId)}&select=email,questions_used,pass_expires_at`
+      );
+      if (Array.isArray(deviceRows) && deviceRows.length > 0) {
+        const anyDevicePassActive = deviceRows.some((r) => {
+          const exp = r.pass_expires_at ? new Date(r.pass_expires_at).getTime() : 0;
+          return Number.isFinite(exp) && exp > nowMs;
+        });
+
+        if (!anyDevicePassActive) {
+          deviceQuestionsUsed = deviceRows.reduce(
+            (sum, r) => sum + Number(r.questions_used || 0),
+            0
+          );
         }
       }
     }
 
-    const imageBase64 =
-      typeof body?.imageBase64 === 'string' && body.imageBase64.trim()
-        ? body.imageBase64.trim()
-        : null;
-    const mimeType =
-      typeof body?.mimeType === 'string' && ALLOWED_IMAGE_MIME_TYPES.includes(body.mimeType.trim())
-        ? body.mimeType.trim()
-        : null;
+    const effectiveQuestionsUsed = Math.max(studentQuestionsUsed, deviceQuestionsUsed);
 
-    if (imageBase64 && !mimeType) {
-      return res.status(400).json({
-        error: 'Unsupported image format. Please upload a JPEG, PNG, or WebP image.',
+    if (!hasActivePass && effectiveQuestionsUsed >= FREE_QUESTION_LIMIT) {
+      return res.status(402).json({
+        code: 'FREE_LIMIT_REACHED',
+        error:
+          'You have used all 10 free questions on this device. Unlock a 24-hour pass for 10 KES to continue.',
+        questionsUsed: effectiveQuestionsUsed,
+        freeLimit: FREE_QUESTION_LIMIT,
+        passExpiresAt: passExpiresAtMs || 0,
       });
     }
 
-    const rawMessages = Array.isArray(body?.messages) ? body.messages : [];
-    const directMessage = typeof body?.message === 'string' ? body.message.trim() : '';
-
-    const historyTurns = rawMessages
-      .filter(
-        (msg) =>
-          msg &&
-          (msg.role === 'user' || msg.role === 'assistant') &&
-          typeof msg.content === 'string' &&
-          msg.content.trim().length > 0
-      )
-      .slice(-8)
-      .map((msg) => ({
-        role: msg.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: msg.content.trim() }],
-      }));
-
-    const resolvedUserText =
-      directMessage ||
-      (imageBase64 ? 'Analyze this image and answer based on the selected unit.' : '');
-
-    if (historyTurns.length === 0 && !resolvedUserText && !imageBase64) {
-      return res.status(400).json({ error: 'Please enter a message or upload an image.' });
+    // 3. Build Gemini request payload
+    const userParts = [];
+    if (promptText) {
+      userParts.push({ text: promptText });
     }
-
-    const contents = buildGeminiContents(historyTurns, resolvedUserText, imageBase64, mimeType);
-
-    let reply = null;
-    try {
-      reply = await callGeminiModel({
-        apiKey,
-        model: primaryModel,
-        selectedUnit,
-        contents,
+    if (imageBase64) {
+      userParts.push({
+        inline_data: {
+          mime_type: imageMimeType,
+          data: imageBase64,
+        },
       });
-    } catch (primaryError) {
-      if (fallbackModel && fallbackModel !== primaryModel) {
-        reply = await callGeminiModel({
-          apiKey,
-          model: fallbackModel,
-          selectedUnit,
-          contents,
-        });
-      } else {
-        throw primaryError;
-      }
     }
 
-    // Increment questions_used in Supabase if the student does not currently have an active 24h pass
-    let updatedQuestionsUsed = studentRecord?.questions_used || 0;
-    let updatedPassExpiresAt = studentRecord?.pass_expires_at
-      ? new Date(studentRecord.pass_expires_at).getTime()
-      : 0;
-
-    if (studentRecord) {
-      const hasValidPass = updatedPassExpiresAt > Date.now();
-      if (!hasValidPass) {
-        updatedQuestionsUsed += 1;
-        await supabaseRequest(
-          `students?email=eq.${encodeURIComponent(email)}`,
+    const geminiResponse = await fetch(GEMINI_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': geminiApiKey,
+      },
+      body: JSON.stringify({
+        system_instruction: {
+          parts: [{ text: buildSystemInstruction(selectedUnit || student.selected_unit) }],
+        },
+        contents: [
           {
-            method: 'PATCH',
-            body: JSON.stringify({
-              questions_used: updatedQuestionsUsed,
-              updated_at: new Date().toISOString(),
-            }),
-          }
-        ).catch(() => null);
-      }
+            role: 'user',
+            parts: userParts,
+          },
+        ],
+      }),
+    });
+
+    const geminiData = await geminiResponse.json().catch(() => null);
+    if (!geminiResponse.ok) {
+      const geminiErr =
+        geminiData?.error?.message || `Gemini API error (${geminiResponse.status})`;
+      return res.status(502).json({ error: geminiErr });
     }
+
+    const replyText = extractGeminiText(geminiData);
+    if (!replyText) {
+      return res.status(502).json({ error: 'Received an empty response from Matrix AI.' });
+    }
+
+    // 4. Increment questions_used for non-pass questions and persist device_id
+    const nextQuestionsUsed = hasActivePass
+      ? studentQuestionsUsed
+      : studentQuestionsUsed + 1;
+
+    const patchPayload = {
+      questions_used: nextQuestionsUsed,
+      updated_at: new Date().toISOString(),
+    };
+    if (deviceId && !student.device_id) {
+      patchPayload.device_id = deviceId;
+    }
+
+    await supabaseRequest(
+      `students?email=eq.${encodeURIComponent(email)}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(patchPayload),
+      }
+    ).catch(() => null);
 
     return res.status(200).json({
-      reply,
-      questionsUsed: updatedQuestionsUsed,
-      passExpiresAt: updatedPassExpiresAt,
+      reply: replyText,
+      questionsUsed: hasActivePass
+        ? effectiveQuestionsUsed
+        : Math.max(nextQuestionsUsed, deviceQuestionsUsed),
+      freeLimit: FREE_QUESTION_LIMIT,
+      hasActivePass,
+      passExpiresAt: passExpiresAtMs || 0,
     });
   } catch (error) {
-    const message =
-      error?.name === 'AbortError'
-        ? 'The AI request timed out. Please try a shorter prompt or try again.'
-        : error?.message || 'An unexpected server error occurred while processing your request.';
-    const status = error?.status && error.status >= 400 && error.status < 600 ? error.status : 500;
-    return res.status(status).json({ error: message });
+    console.error('Matrix AI /api/chat error:', error);
+    return res.status(500).json({
+      error: error?.message || 'Could not process your question right now.',
+    });
   }
 }
