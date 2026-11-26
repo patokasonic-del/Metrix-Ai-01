@@ -4,7 +4,7 @@
   const USAGE_KEY = 'metrix_ai_01_usage_v1';
   const VOICE_PREF_KEY = 'metrix_ai_01_voice_reply_v1';
   const DEVICE_ID_KEY = 'metrix_ai_01_device_id_v1';
-  const FREE_QUESTION_LIMIT = 10;
+  const FREE_QUESTION_LIMIT = 5;
   const PASS_DURATION_MS = 24 * 60 * 60 * 1000;
   const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
