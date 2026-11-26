@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Matrix AI — Telemetry Console</title>
+  <style>
+    :root {
+      --bg: #030712;
+      --panel: rgba(11, 18, 34, 0.86);
+      --panel-2: rgba(15, 25, 48, 0.72);
+      --border: rgba(34, 211, 238, 0.2);
+      --cyan: #22d3ee;
+      --blue: #3b82f6;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --ok: #34d399;
+      --warn: #f59e0b;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at 15% 10%, rgba(34, 211, 238, 0.14), transparent 38%),
+        radial-gradient(circle at 85% 15%, rgba(59, 130, 246, 0.16), transparent 42%),
+        var(--bg);
+      color: var(--text);
+      font-family: Inter, system-ui, -apple-system, sans-serif;
+      padding: 18px 14px 40px;
+    }
+
+    .wrap { max-width: 960px; margin: 0 auto; }
+
+    .topbar {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      padding: 16px 18px;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      background: var(--panel);
+      box-shadow: 0 0 30px rgba(34, 211, 238, 0.07);
+      margin-bottom: 16px;
+    }
+
+    .brand { display: flex; align-items: center; gap: 10px; }
+
+    .pulse-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: var(--cyan);
+      box-shadow: 0 0 12px var(--cyan);
+    }
+
+    .title {
+      font-size: 1.05rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .subtitle { font-size: 0.78rem; color: var(--muted); }
+
+    .controls { display: flex; gap: 8px; width: 100%; }
+    @media (min-width: 640px) { .controls { width: auto; } }
+
+    input, button {
+      border-radius: 10px;
+      font-size: 0.88rem;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+    }
+
+    input {
+      flex: 1;
+      min-width: 0;
+      background: #060c1a;
+      color: var(--text);
+      outline: none;
+    }
+
+    input:focus { border-color: var(--cyan); box-shadow: 0 0 0 2px rgba(34, 211, 238, 0.18); }
+
+    button {
+      background: linear-gradient(135deg, var(--cyan), var(--blue));
+      color: #030712;
+      font-weight: 700;
+      border: none;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .status { font-size: 0.82rem; color: var(--muted); margin-bottom: 14px; min-height: 18px; }
+    .error { color: #f87171; }
+
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    @media (min-width: 720px) { .kpi-grid { grid-template-columns: repeat(4, 1fr); } }
+
+    .kpi {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 16px;
+    }
+
+    .kpi-label { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+    .kpi-val {
+      margin-top: 6px;
+      font-size: 1.75rem;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+      color: var(--cyan);
+    }
+
+    .grid-2 { display: grid; grid-template-columns: 1fr; gap: 16px; }
+    @media (min-width: 780px) { .grid-2 { grid-template-columns: 1fr 1.4fr; } }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 16px;
+    }
+
+    .card h2 { font-size: 0.95rem; margin-bottom: 12px; color: #e2e8f0; }
+
+    .unit-row { margin-bottom: 12px; }
+    .unit-meta { display: flex; justify-content: space-between; font-size: 0.84rem; margin-bottom: 5px; }
+    .bar-bg { height: 8px; border-radius: 999px; background: rgba(148, 163, 184, 0.16); overflow: hidden; }
+    .bar-fill {
+      height: 100%;
+      border-radius: 999px;
+      background: linear-gradient(90deg, var(--cyan), var(--blue));
+    }
+
+    .student-item {
+      background: var(--panel-2);
+      border: 1px solid rgba(148, 163, 184, 0.14);
+      border-radius: 12px;
+      padding: 12px;
+      margin-bottom: 10px;
+    }
+
+    .student-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    .email { font-size: 0.85rem; font-weight: 600; word-break: break-all; }
+    .badge {
+      font-size: 0.72rem;
+      padding: 3px 8px;
+      border-radius: 999px;
+      font-weight: 700;
+      background: rgba(148, 163, 184, 0.16);
+      color: #cbd5e1;
+      white-space: nowrap;
+    }
+    .badge.pass { background: rgba(52, 211, 153, 0.18); color: var(--ok); }
+    .student-sub { margin-top: 6px; font-size: 0.78rem; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="brand">
+        <span class="pulse-dot"></span>
+        <div>
+          <div class="title">Matrix AI Telemetry</div>
+          <div class="subtitle">Live Student &amp; Quota Overview</div>
+        </div>
+      </div>
+      <div class="controls">
+        <input id="keyInput" type="password" placeholder="Enter admin key" autocomplete="off" />
+        <button id="loadBtn" type="button">Sync Stats</button>
+      </div>
+    </div>
+
+    <div id="status" class="status">Enter your admin key and tap Sync Stats.</div>
+
+    <div class="kpi-grid">
+      <div class="kpi"><div class="kpi-label">Total Students</div><div id="totalStudents" class="kpi-val">—</div></div>
+      <div class="kpi"><div class="kpi-label">Active Passes</div><div id="activePasses" class="kpi-val">—</div></div>
+      <div class="kpi"><div class="kpi-label">Hit Free Limit</div><div id="hitFreeLimit" class="kpi-val">—</div></div>
+      <div class="kpi"><div class="kpi-label">Questions Used</div><div id="totalQuestionsUsed" class="kpi-val">—</div></div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <h2>Top Units</h2>
+        <div id="topUnits"></div>
+      </div>
+      <div class="card">
+        <h2>Recent Students</h2>
+        <div id="recentStudents"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const keyInput = document.getElementById('keyInput');
+    const loadBtn = document.getElementById('loadBtn');
+    const statusEl = document.getElementById('status');
+
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('key')) {
+      keyInput.value = params.get('key');
+    }
+
+    function escapeHtml(str) {
+      return String(str ?? '').replace(/[&<>"']/g, (ch) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[ch]));
+    }
+
+    async function loadStats() {
+      const key = keyInput.value.trim();
+      if (!key) {
+        statusEl.textContent = 'Please enter your admin key first.';
+        statusEl.className = 'status error';
+        return;
+      }
+
+      statusEl.textContent = 'Syncing live data...';
+      statusEl.className = 'status';
+
+      try {
+        const res = await fetch('/api/stats', {
+          headers: { 'x-admin-key': key }
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data?.error || `Request failed (${res.status})`);
+        }
+
+        document.getElementById('totalStudents').textContent = data.totalStudents ?? 0;
+        document.getElementById('activePasses').textContent = data.activePasses ?? 0;
+        document.getElementById('hitFreeLimit').textContent = data.hitFreeLimit ?? 0;
+        document.getElementById('totalQuestionsUsed').textContent = data.totalQuestionsUsed ?? 0;
+
+        const units = Array.isArray(data.topUnits) ? data.topUnits : [];
+        const maxUnit = Math.max(1, ...units.map((u) => Number(u.count || 0)));
+        document.getElementById('topUnits').innerHTML = units.length
+          ? units.map((u) => {
+              const pct = Math.round((Number(u.count || 0) / maxUnit) * 100);
+              return `
+                <div class="unit-row">
+                  <div class="unit-meta">
+                    <span>${escapeHtml(u.unit)}</span>
+                    <span>${escapeHtml(u.count)}</span>
+                  </div>
+                  <div class="bar-bg"><div class="bar-fill" style="width:${pct}%"></div></div>
+                </div>`;
+            }).join('')
+          : '<div class="subtitle">No unit data yet.</div>';
+
+        const students = Array.isArray(data.recentStudents) ? data.recentStudents : [];
+        document.getElementById('recentStudents').innerHTML = students.length
+          ? students.map((s) => `
+              <div class="student-item">
+                <div class="student-top">
+                  <span class="email">${escapeHtml(s.email)}</span>
+                  <span class="badge ${s.hasActivePass ? 'pass' : ''}">${s.hasActivePass ? 'Active Pass' : 'Free Tier'}</span>
+                </div>
+                <div class="student-sub">
+                  Unit: ${escapeHtml(s.selectedUnit)} • Questions used: ${escapeHtml(s.questionsUsed)}
+                </div>
+              </div>`).join('')
+          : '<div class="subtitle">No students recorded yet.</div>';
+
+        statusEl.textContent = `Updated just now • Unique devices: ${data.uniqueDevices ?? 0}`;
+        statusEl.className = 'status';
+      } catch (err) {
+        statusEl.textContent = err.message || 'Could not load stats.';
+        statusEl.className = 'status error';
+      }
+    }
+
+    loadBtn.addEventListener('click', loadStats);
+    if (keyInput.value) loadStats();
+  </script>
+</body>
+</html>
