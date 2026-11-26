@@ -1,4 +1,5 @@
-const FREE_QUESTION_LIMIT = 10;
+const FREE_QUESTION_LIMIT = 5;
+const FREE_WINDOW_MS = 24 * 60 * 60 * 1000;
 const GEMINI_API_URL =
   'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
 
@@ -33,6 +34,21 @@ async function supabaseRequest(path, options = {}) {
     throw new Error(data?.message || data?.error || `Supabase error (${response.status})`);
   }
   return data;
+}
+
+function isFreeWindowExpired(windowStartIso, nowMs) {
+  if (!windowStartIso) return false;
+  const startedMs = new Date(windowStartIso).getTime();
+  if (!Number.isFinite(startedMs)) return false;
+  return nowMs - startedMs >= FREE_WINDOW_MS;
+}
+
+function getEffectiveWindowUsage(row, nowMs) {
+  const rawUsed = Number(row?.questions_used || 0);
+  if (isFreeWindowExpired(row?.free_window_started_at, nowMs)) {
+    return 0;
+  }
+  return rawUsed;
 }
 
 function buildSystemInstruction(unit) {
@@ -96,18 +112,26 @@ export default async function handler(req, res) {
     }
 
     const nowMs = Date.now();
+    const nowIso = new Date(nowMs).toISOString();
     const passExpiresAtMs = student.pass_expires_at
       ? new Date(student.pass_expires_at).getTime()
       : 0;
     const hasActivePass = Number.isFinite(passExpiresAtMs) && passExpiresAtMs > nowMs;
 
-    const studentQuestionsUsed = Number(student.questions_used || 0);
+    // 2. Check if this student's 24-hour free window expired
+    const windowExpired = isFreeWindowExpired(student.free_window_started_at, nowMs);
+    let studentQuestionsUsed = windowExpired ? 0 : Number(student.questions_used || 0);
+    let windowStartIso =
+      windowExpired || !student.free_window_started_at
+        ? nowIso
+        : student.free_window_started_at;
+
     let deviceQuestionsUsed = 0;
 
-    // 2. Check all accounts tied to this device_id to prevent free-quota resets via email switching
+    // 3. Check all accounts tied to this device_id within their active 24h window
     if (!hasActivePass && deviceId) {
       const deviceRows = await supabaseRequest(
-        `students?device_id=eq.${encodeURIComponent(deviceId)}&select=email,questions_used,pass_expires_at`
+        `students?device_id=eq.${encodeURIComponent(deviceId)}&select=email,questions_used,pass_expires_at,free_window_started_at`
       );
       if (Array.isArray(deviceRows) && deviceRows.length > 0) {
         const anyDevicePassActive = deviceRows.some((r) => {
@@ -117,7 +141,7 @@ export default async function handler(req, res) {
 
         if (!anyDevicePassActive) {
           deviceQuestionsUsed = deviceRows.reduce(
-            (sum, r) => sum + Number(r.questions_used || 0),
+            (sum, r) => sum + getEffectiveWindowUsage(r, nowMs),
             0
           );
         }
@@ -130,14 +154,14 @@ export default async function handler(req, res) {
       return res.status(402).json({
         code: 'FREE_LIMIT_REACHED',
         error:
-          'You have used all 10 free questions on this device. Unlock a 24-hour pass for 10 KES to continue.',
+          'You have used all 5 free questions for today. Unlock a 24-hour pass for 10 KES or wait for your 24-hour daily reset.',
         questionsUsed: effectiveQuestionsUsed,
         freeLimit: FREE_QUESTION_LIMIT,
         passExpiresAt: passExpiresAtMs || 0,
       });
     }
 
-    // 3. Build Gemini request payload
+    // 4. Build Gemini request payload
     const userParts = [];
     if (promptText) {
       userParts.push({ text: promptText });
@@ -182,14 +206,15 @@ export default async function handler(req, res) {
       return res.status(502).json({ error: 'Received an empty response from Matrix AI.' });
     }
 
-    // 4. Increment questions_used for non-pass questions and persist device_id
-    const nextQuestionsUsed = hasActivePass
+    // 5. Update daily free counter and 24-hour free window start in Supabase
+    const nextStudentQuestionsUsed = hasActivePass
       ? studentQuestionsUsed
       : studentQuestionsUsed + 1;
 
     const patchPayload = {
-      questions_used: nextQuestionsUsed,
-      updated_at: new Date().toISOString(),
+      questions_used: nextStudentQuestionsUsed,
+      free_window_started_at: windowStartIso,
+      updated_at: nowIso,
     };
     if (deviceId && !student.device_id) {
       patchPayload.device_id = deviceId;
@@ -203,11 +228,13 @@ export default async function handler(req, res) {
       }
     ).catch(() => null);
 
+    const reportedQuestionsUsed = hasActivePass
+      ? effectiveQuestionsUsed
+      : Math.max(nextStudentQuestionsUsed, deviceQuestionsUsed);
+
     return res.status(200).json({
       reply: replyText,
-      questionsUsed: hasActivePass
-        ? effectiveQuestionsUsed
-        : Math.max(nextQuestionsUsed, deviceQuestionsUsed),
+      questionsUsed: reportedQuestionsUsed,
       freeLimit: FREE_QUESTION_LIMIT,
       hasActivePass,
       passExpiresAt: passExpiresAtMs || 0,
