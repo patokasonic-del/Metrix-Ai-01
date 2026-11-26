@@ -1,34 +1,32 @@
 const FREE_QUESTION_LIMIT = 5;
 const FREE_WINDOW_MS = 24 * 60 * 60 * 1000;
-const GEMINI_API_URL =
-  'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent';
+const PRIMARY_GEMINI_URL =
+  'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent';
+const FALLBACK_GEMINI_URL =
+  'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent';
+const GEMINI_TIMEOUT_MS = 9000;
 
 async function supabaseRequest(path, options = {}) {
   const supabaseUrl = (process.env.SUPABASE_URL || '').trim().replace(/\/+$/, '');
   const serviceKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
-
   if (!supabaseUrl || !serviceKey) {
     throw new Error(
       'Server configuration error: SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is missing in Vercel.'
     );
   }
-
   const headers = {
     apikey: serviceKey,
     'Content-Type': 'application/json',
     Prefer: 'return=representation',
     ...(options.headers || {}),
   };
-
   if (!serviceKey.startsWith('sb_secret_')) {
     headers.Authorization = `Bearer ${serviceKey}`;
   }
-
   const response = await fetch(`${supabaseUrl}/rest/v1/${path}`, {
     ...options,
     headers,
   });
-
   const data = await response.json().catch(() => null);
   if (!response.ok) {
     throw new Error(data?.message || data?.error || `Supabase error (${response.status})`);
@@ -69,19 +67,52 @@ function extractGeminiText(data) {
     .trim();
 }
 
+async function fetchGeminiWithTimeout(url, geminiApiKey, payload) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': geminiApiKey,
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+
+    const data = await response.json().catch(() => null);
+    return { ok: response.ok, status: response.status, data };
+  } catch (err) {
+    const isTimeout = err?.name === 'AbortError';
+    return {
+      ok: false,
+      status: isTimeout ? 504 : 503,
+      data: {
+        error: {
+          message: isTimeout
+            ? 'Primary model timed out while responding.'
+            : err?.message || 'Network error calling Gemini API.',
+        },
+      },
+    };
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', ['POST']);
     return res.status(405).json({ error: 'Method not allowed. Use POST.' });
   }
-
   const geminiApiKey = (process.env.GEMINI_API_KEY || '').trim();
   if (!geminiApiKey) {
     return res.status(500).json({
       error: 'Server configuration error: GEMINI_API_KEY is missing in Vercel environment variables.',
     });
   }
-
   try {
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
     const email = String(body?.email || '').trim().toLowerCase();
@@ -94,17 +125,13 @@ export default async function handler(req, res) {
     if (!email || !/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(email)) {
       return res.status(401).json({ error: 'Please sign in with your student email first.' });
     }
-
     if (!promptText && !imageBase64) {
       return res.status(400).json({ error: 'Please enter a question or attach an image.' });
     }
 
     // 1. Fetch student record from Supabase
-    const rows = await supabaseRequest(
-      `students?email=eq.${encodeURIComponent(email)}&select=*`
-    );
+    const rows = await supabaseRequest(`students?email=eq.${encodeURIComponent(email)}&select=*`);
     const student = Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
-
     if (!student) {
       return res.status(404).json({
         error: 'Student account not found. Please sign in again.',
@@ -113,19 +140,14 @@ export default async function handler(req, res) {
 
     const nowMs = Date.now();
     const nowIso = new Date(nowMs).toISOString();
-    const passExpiresAtMs = student.pass_expires_at
-      ? new Date(student.pass_expires_at).getTime()
-      : 0;
+    const passExpiresAtMs = student.pass_expires_at ? new Date(student.pass_expires_at).getTime() : 0;
     const hasActivePass = Number.isFinite(passExpiresAtMs) && passExpiresAtMs > nowMs;
 
     // 2. Check if this student's 24-hour free window expired
     const windowExpired = isFreeWindowExpired(student.free_window_started_at, nowMs);
     let studentQuestionsUsed = windowExpired ? 0 : Number(student.questions_used || 0);
     let windowStartIso =
-      windowExpired || !student.free_window_started_at
-        ? nowIso
-        : student.free_window_started_at;
-
+      windowExpired || !student.free_window_started_at ? nowIso : student.free_window_started_at;
     let deviceQuestionsUsed = 0;
 
     // 3. Check all accounts tied to this device_id within their active 24h window
@@ -138,7 +160,6 @@ export default async function handler(req, res) {
           const exp = r.pass_expires_at ? new Date(r.pass_expires_at).getTime() : 0;
           return Number.isFinite(exp) && exp > nowMs;
         });
-
         if (!anyDevicePassActive) {
           deviceQuestionsUsed = deviceRows.reduce(
             (sum, r) => sum + getEffectiveWindowUsage(r, nowMs),
@@ -149,7 +170,6 @@ export default async function handler(req, res) {
     }
 
     const effectiveQuestionsUsed = Math.max(studentQuestionsUsed, deviceQuestionsUsed);
-
     if (!hasActivePass && effectiveQuestionsUsed >= FREE_QUESTION_LIMIT) {
       return res.status(402).json({
         code: 'FREE_LIMIT_REACHED',
@@ -161,7 +181,7 @@ export default async function handler(req, res) {
       });
     }
 
-    // 4. Build Gemini request payload
+    // 4. Build Gemini request payload and call primary model with one fallback on 429/503/timeout
     const userParts = [];
     if (promptText) {
       userParts.push({ text: promptText });
@@ -175,42 +195,41 @@ export default async function handler(req, res) {
       });
     }
 
-    const geminiResponse = await fetch(GEMINI_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-goog-api-key': geminiApiKey,
+    const geminiPayload = {
+      system_instruction: {
+        parts: [{ text: buildSystemInstruction(selectedUnit || student.selected_unit) }],
       },
-      body: JSON.stringify({
-        system_instruction: {
-          parts: [{ text: buildSystemInstruction(selectedUnit || student.selected_unit) }],
+      contents: [
+        {
+          role: 'user',
+          parts: userParts,
         },
-        contents: [
-          {
-            role: 'user',
-            parts: userParts,
-          },
-        ],
-      }),
-    });
+      ],
+    };
 
-    const geminiData = await geminiResponse.json().catch(() => null);
-    if (!geminiResponse.ok) {
+    let attempt = await fetchGeminiWithTimeout(PRIMARY_GEMINI_URL, geminiApiKey, geminiPayload);
+    let replyText = attempt.ok ? extractGeminiText(attempt.data) : '';
+
+    const shouldFallback =
+      !attempt.ok && (attempt.status === 429 || attempt.status === 503 || attempt.status === 504);
+
+    if (shouldFallback) {
+      attempt = await fetchGeminiWithTimeout(FALLBACK_GEMINI_URL, geminiApiKey, geminiPayload);
+      replyText = attempt.ok ? extractGeminiText(attempt.data) : '';
+    }
+
+    if (!attempt.ok) {
       const geminiErr =
-        geminiData?.error?.message || `Gemini API error (${geminiResponse.status})`;
+        attempt.data?.error?.message || `Gemini API error (${attempt.status})`;
       return res.status(502).json({ error: geminiErr });
     }
 
-    const replyText = extractGeminiText(geminiData);
     if (!replyText) {
       return res.status(502).json({ error: 'Received an empty response from Matrix AI.' });
     }
 
     // 5. Update daily free counter and 24-hour free window start in Supabase
-    const nextStudentQuestionsUsed = hasActivePass
-      ? studentQuestionsUsed
-      : studentQuestionsUsed + 1;
-
+    const nextStudentQuestionsUsed = hasActivePass ? studentQuestionsUsed : studentQuestionsUsed + 1;
     const patchPayload = {
       questions_used: nextStudentQuestionsUsed,
       free_window_started_at: windowStartIso,
@@ -220,13 +239,10 @@ export default async function handler(req, res) {
       patchPayload.device_id = deviceId;
     }
 
-    await supabaseRequest(
-      `students?email=eq.${encodeURIComponent(email)}`,
-      {
-        method: 'PATCH',
-        body: JSON.stringify(patchPayload),
-      }
-    ).catch(() => null);
+    await supabaseRequest(`students?email=eq.${encodeURIComponent(email)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patchPayload),
+    }).catch(() => null);
 
     const reportedQuestionsUsed = hasActivePass
       ? effectiveQuestionsUsed
