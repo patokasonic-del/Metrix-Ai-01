@@ -3,6 +3,7 @@
   const CHATS_KEY = 'metrix_ai_01_chats_by_unit_v1';
   const USAGE_KEY = 'metrix_ai_01_usage_v1';
   const VOICE_PREF_KEY = 'metrix_ai_01_voice_reply_v1';
+  const DEVICE_ID_KEY = 'metrix_ai_01_device_id_v1';
   const FREE_QUESTION_LIMIT = 10;
   const PASS_DURATION_MS = 24 * 60 * 60 * 1000;
   const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
@@ -16,7 +17,6 @@
   const togglePasswordBtn = document.getElementById('togglePasswordBtn');
   const passwordStrengthBar = document.getElementById('passwordStrengthBar');
   const passwordStrengthText = document.getElementById('passwordStrengthText');
-
   const unitScreen = document.getElementById('unitScreen');
   const signedInEmailLabel = document.getElementById('signedInEmailLabel');
   const signOutBtn = document.getElementById('signOutBtn');
@@ -73,6 +73,27 @@
   const payNowBtn = document.getElementById('payNowBtn');
   const verifyPaymentBtn = document.getElementById('verifyPaymentBtn');
   const paymentStatusMsg = document.getElementById('paymentStatusMsg');
+
+  // --- Device ID Helper ---
+  function getOrCreateDeviceId() {
+    try {
+      const existing = localStorage.getItem(DEVICE_ID_KEY);
+      if (existing && existing.trim().length >= 8) {
+        return existing.trim();
+      }
+      const uniqueSuffix =
+        typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+          ? crypto.randomUUID()
+          : `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 12)}`;
+      const created = `mx_dev_${uniqueSuffix}`;
+      localStorage.setItem(DEVICE_ID_KEY, created);
+      return created;
+    } catch {
+      return `mx_dev_fallback_${Date.now().toString(36)}`;
+    }
+  }
+
+  const DEVICE_ID = getOrCreateDeviceId();
 
   // Application State
   let session = loadSession();
@@ -182,7 +203,14 @@
 
   function applyServerUsage(email, questionsUsed, passExpiresAt) {
     const emailKey = String(email || session?.email || 'guest').toLowerCase();
-    const current = getUserUsage();
+    if (!usageMap[emailKey]) {
+      usageMap[emailKey] = {
+        questionsUsed: 0,
+        passExpiresAt: 0,
+        lastCheckoutId: '',
+      };
+    }
+    const current = usageMap[emailKey];
     usageMap[emailKey] = {
       ...current,
       questionsUsed: typeof questionsUsed === 'number' ? questionsUsed : current.questionsUsed,
@@ -200,6 +228,7 @@
         body: JSON.stringify({
           action: 'sync',
           email: session.email,
+          deviceId: DEVICE_ID,
         }),
       });
       const data = await response.json().catch(() => null);
@@ -264,7 +293,6 @@
       img.onload = () => {
         const MAX_DIMENSION = 1280;
         let { width, height } = img;
-
         if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
           if (width > height) {
             height = Math.round((height * MAX_DIMENSION) / width);
@@ -274,7 +302,6 @@
             height = MAX_DIMENSION;
           }
         }
-
         const canvas = document.createElement('canvas');
         canvas.width = width;
         canvas.height = height;
@@ -372,11 +399,19 @@
       micVoiceBtn.classList.remove('listening');
       micVoiceIcon.className = 'fa-solid fa-microphone';
       if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
-        showVoiceOrInputNotice('Microphone permission blocked. Allow mic access in your browser settings.', true, false);
+        showVoiceOrInputNotice(
+          'Microphone permission blocked. Allow mic access in your browser settings.',
+          true,
+          false
+        );
       } else if (event.error === 'no-speech') {
         showVoiceOrInputNotice('No speech detected. Tap the mic and try again.', true, false);
       } else {
-        showVoiceOrInputNotice(`Voice input error (${event.error}). You can type your question instead.`, true, false);
+        showVoiceOrInputNotice(
+          `Voice input error (${event.error}). You can type your question instead.`,
+          true,
+          false
+        );
       }
     };
 
@@ -393,12 +428,14 @@
 
   function toggleMicrophoneListening() {
     stopSpeaking();
-
     if (!recognition) {
-      showVoiceOrInputNotice('Voice input is not supported in this browser. Try Chrome or Edge.', true, false);
+      showVoiceOrInputNotice(
+        'Voice input is not supported in this browser. Try Chrome or Edge.',
+        true,
+        false
+      );
       return;
     }
-
     if (isListening) {
       try {
         recognition.stop();
@@ -407,19 +444,24 @@
       }
       return;
     }
-
     hideVoiceOrInputNotice();
     try {
       recognition.start();
     } catch {
-      showVoiceOrInputNotice('Unable to start microphone right now. Please try again.', true, false);
+      showVoiceOrInputNotice(
+        'Unable to start microphone right now. Please try again.',
+        true,
+        false
+      );
     }
   }
 
   function updateVoiceReplyToggleUI() {
     voiceReplyToggleBtn.classList.toggle('active', voiceReplyEnabled);
     voiceReplyToggleBtn.setAttribute('aria-pressed', voiceReplyEnabled ? 'true' : 'false');
-    voiceReplyIcon.className = voiceReplyEnabled ? 'fa-solid fa-volume-high' : 'fa-solid fa-volume-xmark';
+    voiceReplyIcon.className = voiceReplyEnabled
+      ? 'fa-solid fa-volume-high'
+      : 'fa-solid fa-volume-xmark';
     voiceReplyStateText.textContent = voiceReplyEnabled ? 'On' : 'Off';
   }
 
@@ -446,10 +488,8 @@
   function speakAssistantReply(rawText) {
     if (!voiceReplyEnabled || !('speechSynthesis' in window)) return;
     stopSpeaking();
-
     const spokenText = cleanTextForSpeech(rawText);
     if (!spokenText) return;
-
     const utterance = new SpeechSynthesisUtterance(spokenText);
     utterance.rate = 1.0;
     utterance.pitch = 1.0;
@@ -485,11 +525,13 @@
 
     if (score <= 2) {
       passwordStrengthBar.style.backgroundColor = '#ef4444';
-      passwordStrengthText.textContent = 'Weak password — add 8+ chars, upper/lowercase, number & symbol.';
+      passwordStrengthText.textContent =
+        'Weak password — add 8+ chars, upper/lowercase, number & symbol.';
       passwordStrengthText.style.color = '#fca5a5';
     } else if (score < 5 || !isStrong) {
       passwordStrengthBar.style.backgroundColor = '#f59e0b';
-      passwordStrengthText.textContent = 'Moderate password — include all 5 requirements for a strong password.';
+      passwordStrengthText.textContent =
+        'Moderate password — include all 5 requirements for a strong password.';
       passwordStrengthText.style.color = '#fcd34d';
     } else {
       passwordStrengthBar.style.backgroundColor = '#10b981';
@@ -530,7 +572,6 @@
     authScreen.classList.add('hidden');
     unitScreen.classList.add('hidden');
     chatApp.classList.remove('hidden');
-
     activeUnitText.textContent = session.selectedUnit;
     welcomeSubtitle.textContent = 'Welcome to Matrix AI! What can I help you with today?';
 
@@ -538,7 +579,6 @@
     if (!unitChats.some((c) => c.id === currentChatId)) {
       currentChatId = unitChats.length > 0 ? unitChats[0].id : null;
     }
-
     renderSidebar();
     if (!currentChatId) {
       startNewChat(false);
@@ -564,6 +604,7 @@
           action: 'update_unit',
           email: session.email,
           selectedUnit: cleanUnit,
+          deviceId: DEVICE_ID,
         }),
       }).catch(() => null);
     }
@@ -622,7 +663,10 @@
     e.preventDefault();
     const normalizedPhone = normalizeKenyanPhone(mpesaPhoneInput.value);
     if (!normalizedPhone) {
-      setPaymentStatus('Enter a valid Kenyan M-Pesa number (e.g., 07XXXXXXXX or 2547XXXXXXXX).', 'error');
+      setPaymentStatus(
+        'Enter a valid Kenyan M-Pesa number (e.g., 07XXXXXXXX or 2547XXXXXXXX).',
+        'error'
+      );
       mpesaPhoneInput.focus();
       return;
     }
@@ -640,9 +684,9 @@
           amount: 10,
           email: session?.email || '',
           selectedUnit: session?.selectedUnit || '',
+          deviceId: DEVICE_ID,
         }),
       });
-
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
         setPaymentStatus(
@@ -656,12 +700,16 @@
           saveUsageMap();
         }
         setPaymentStatus(
-          data.message || 'Check your phone for the 10 KES M-Pesa PIN prompt, enter your PIN, then click "I Have Paid — Verify Payment".',
+          data.message ||
+            'Check your phone for the 10 KES M-Pesa PIN prompt, enter your PIN, then click "I Have Paid — Verify Payment".',
           'success'
         );
       }
     } catch {
-      setPaymentStatus('Network error while starting payment. Check your connection and try again.', 'error');
+      setPaymentStatus(
+        'Network error while starting payment. Check your connection and try again.',
+        'error'
+      );
     } finally {
       payNowBtn.disabled = false;
       verifyPaymentBtn.disabled = false;
@@ -684,19 +732,17 @@
           email: session?.email || '',
           phone: normalizedPhone || '',
           checkoutRequestId: usage.lastCheckoutId || '',
+          deviceId: DEVICE_ID,
         }),
       });
-
       const data = await response.json().catch(() => ({}));
       if (response.ok && data.paid) {
         const expiresAt = data.passExpiresAt || Date.now() + PASS_DURATION_MS;
         applyServerUsage(session?.email, usage.questionsUsed, expiresAt);
         activate24hPass(data.checkoutRequestId || usage.lastCheckoutId || '');
         setPaymentStatus('Payment verified! Your 24-hour access is now active.', 'success');
-
         const queued = pendingPayload;
         pendingPayload = null;
-
         setTimeout(() => {
           closePaymentModal();
           if (queued) {
@@ -705,12 +751,16 @@
         }, 650);
       } else {
         setPaymentStatus(
-          data.error || 'Payment not confirmed yet. Complete the 10 KES prompt on your phone and try again.',
+          data.error ||
+            'Payment not confirmed yet. Complete the 10 KES prompt on your phone and try again.',
           'error'
         );
       }
     } catch {
-      setPaymentStatus('Network error while verifying payment. Please try again.', 'error');
+      setPaymentStatus(
+        'Network error while verifying payment. Please try again.',
+        'error'
+      );
     } finally {
       payNowBtn.disabled = false;
       verifyPaymentBtn.disabled = false;
@@ -766,7 +816,6 @@
     }
     svgEl.removeAttribute('width');
     svgEl.removeAttribute('height');
-
     return svgEl.outerHTML;
   }
 
@@ -780,32 +829,26 @@
     const codeBlocks = [];
     const svgBlocks = [];
 
-    let processed = String(rawText).replace(
-      /```svg\s*\n([\s\S]*?)```/gi,
-      (_, svgContent) => {
-        const cleanSvg = sanitizeSvg(svgContent.trim());
-        if (cleanSvg) {
-          const idx = svgBlocks.length;
-          svgBlocks.push(cleanSvg);
-          return `@@SVGBLOCK_${idx}@@`;
-        }
-        const codeIdx = codeBlocks.length;
-        codeBlocks.push({ lang: 'svg', code: svgContent.trim() });
-        return `@@CODEBLOCK_${codeIdx}@@`;
+    let processed = String(rawText).replace(/```svg\s*\n([\s\S]*?)```/gi, (_, svgContent) => {
+      const cleanSvg = sanitizeSvg(svgContent.trim());
+      if (cleanSvg) {
+        const idx = svgBlocks.length;
+        svgBlocks.push(cleanSvg);
+        return `@@SVGBLOCK_${idx}@@`;
       }
-    );
+      const codeIdx = codeBlocks.length;
+      codeBlocks.push({ lang: 'svg', code: svgContent.trim() });
+      return `@@CODEBLOCK_${codeIdx}@@`;
+    });
 
-    processed = processed.replace(
-      /```([a-zA-Z0-9_+-]*)\n([\s\S]*?)```/g,
-      (_, lang, code) => {
-        const index = codeBlocks.length;
-        codeBlocks.push({
-          lang: lang.trim() || 'code',
-          code: code.replace(/\n$/, ''),
-        });
-        return `@@CODEBLOCK_${index}@@`;
-      }
-    );
+    processed = processed.replace(/```([a-zA-Z0-9_+-]*)\n([\s\S]*?)```/g, (_, lang, code) => {
+      const index = codeBlocks.length;
+      codeBlocks.push({
+        lang: lang.trim() || 'code',
+        code: code.replace(/\n$/, ''),
+      });
+      return `@@CODEBLOCK_${index}@@`;
+    });
 
     const lines = processed.split('\n');
     const output = [];
@@ -911,7 +954,6 @@
     }
 
     closeLists();
-
     const container = document.createElement('div');
     container.innerHTML = output.join('');
 
@@ -1001,7 +1043,6 @@
       delBtn.type = 'button';
       delBtn.title = 'Delete chat';
       delBtn.innerHTML = '<i class="fa-regular fa-trash-can"></i>';
-
       delBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         deleteChat(chat.id);
@@ -1021,7 +1062,6 @@
   function renderMessages() {
     messagesList.innerHTML = '';
     const chat = getCurrentChat();
-
     if (!chat || chat.messages.length === 0) {
       welcomeScreen.classList.remove('hidden');
       return;
@@ -1047,7 +1087,6 @@
     if (msg.role === 'user') {
       const bubble = document.createElement('div');
       bubble.className = 'user-bubble';
-
       if (msg.imageUrl) {
         const imgEl = document.createElement('img');
         imgEl.src = msg.imageUrl;
@@ -1055,13 +1094,11 @@
         imgEl.className = 'user-bubble-image';
         bubble.appendChild(imgEl);
       }
-
       if (msg.content) {
         const textNode = document.createElement('div');
         textNode.textContent = msg.content;
         bubble.appendChild(textNode);
       }
-
       row.appendChild(bubble);
     } else {
       const avatar = createAvatarElement();
@@ -1222,7 +1259,6 @@
     unitChats.unshift(newChat);
     currentChatId = newChat.id;
     saveChatsByUnit();
-
     renderSidebar();
     renderMessages();
     messageInput.value = '';
@@ -1262,7 +1298,6 @@
   // --- Sending Messages ---
   async function handleSendMessage(overrideText = null, overrideAttachment = null) {
     if (isGenerating) return;
-
     if (isListening && recognition) {
       try {
         recognition.stop();
@@ -1294,7 +1329,9 @@
       currentChatId = chat.id;
     }
 
-    const displayUserText = text || 'Analyze this image and answer based on the selected unit.';
+    const displayUserText =
+      text || 'Analyze this image and answer based on the selected unit.';
+
     const hasPriorUserMsg = chat.messages.some((m) => m.role === 'user');
     if (!hasPriorUserMsg) {
       const titleSource = text || 'Image Question';
@@ -1336,9 +1373,12 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: text,
+          prompt: text,
           unit: activeUnit,
           selectedUnit: activeUnit,
+          deviceId: DEVICE_ID,
           imageBase64: attachmentToSend ? attachmentToSend.base64 : null,
+          imageMimeType: attachmentToSend ? attachmentToSend.mimeType : null,
           mimeType: attachmentToSend ? attachmentToSend.mimeType : null,
           email: session?.email || '',
           questionsUsed: usage.questionsUsed || 0,
@@ -1350,13 +1390,16 @@
       const data = await response.json().catch(() => ({}));
       removeTypingIndicator();
 
-      if (response.status === 402 || data.code === 'PAYMENT_REQUIRED') {
+      if (
+        response.status === 402 ||
+        data.code === 'PAYMENT_REQUIRED' ||
+        data.code === 'FREE_LIMIT_REACHED'
+      ) {
         applyServerUsage(
           session?.email,
           data.questionsUsed ?? FREE_QUESTION_LIMIT,
           data.passExpiresAt ?? 0
         );
-        // Remove the unsent user message from the chat view and open payment pop-up
         chat.messages.pop();
         saveChatsByUnit();
         renderMessages();
@@ -1365,7 +1408,8 @@
       }
 
       if (!response.ok || !data.reply) {
-        const errText = data.error || 'Something went wrong while contacting Matrix AI. Please try again.';
+        const errText =
+          data.error || 'Something went wrong while contacting Matrix AI. Please try again.';
         const errMsg = {
           role: 'assistant',
           content: errText,
@@ -1393,7 +1437,8 @@
       removeTypingIndicator();
       const networkErrMsg = {
         role: 'assistant',
-        content: 'Network error: Could not reach the server. Please check your connection and try again.',
+        content:
+          'Network error: Could not reach the server. Please check your connection and try again.',
         time: formatTime(),
         isError: true,
         feedback: null,
@@ -1446,8 +1491,8 @@
 
     const email = studentEmailInput.value.trim().toLowerCase();
     const password = studentPasswordInput.value;
-    const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
+    const emailValid = /^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(email);
     if (!emailValid) {
       showAuthError('Please enter a valid student email address.');
       studentEmailInput.focus();
@@ -1476,12 +1521,14 @@
           action: 'login',
           email,
           password,
+          deviceId: DEVICE_ID,
         }),
       });
-
       const data = await response.json().catch(() => ({}));
       if (!response.ok || !data.student) {
-        showAuthError(data.error || 'Could not sign in. Please check your credentials and try again.');
+        showAuthError(
+          data.error || 'Could not sign in. Please check your credentials and try again.'
+        );
         return;
       }
 
@@ -1573,7 +1620,11 @@
   removeAttachmentBtn.addEventListener('click', clearSelectedAttachment);
 
   document.addEventListener('click', (e) => {
-    if (!photoPickerMenu.classList.contains('hidden') && !photoPickerMenu.contains(e.target) && e.target !== photoAttachBtn) {
+    if (
+      !photoPickerMenu.classList.contains('hidden') &&
+      !photoPickerMenu.contains(e.target) &&
+      e.target !== photoAttachBtn
+    ) {
       photoPickerMenu.classList.add('hidden');
     }
   });
