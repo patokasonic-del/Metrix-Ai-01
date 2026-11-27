@@ -4,6 +4,7 @@
   const USAGE_KEY = 'metrix_ai_01_usage_v1';
   const VOICE_PREF_KEY = 'metrix_ai_01_voice_reply_v1';
   const DEVICE_ID_KEY = 'metrix_ai_01_device_id_v1';
+  const DAILY_TIME_ZONE = 'Africa/Nairobi';
   const FREE_QUESTION_LIMIT = 5;
   const PASS_DURATION_MS = 24 * 60 * 60 * 1000;
   const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
@@ -189,25 +190,57 @@
     }
   }
 
+  function getDailyDayKey(timestampMs = Date.now()) {
+    try {
+      const dateObj = new Date(timestampMs);
+      if (!Number.isFinite(dateObj.getTime())) return '';
+      const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: DAILY_TIME_ZONE,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).formatToParts(dateObj);
+      const year = parts.find((p) => p.type === 'year')?.value || '';
+      const month = parts.find((p) => p.type === 'month')?.value || '';
+      const day = parts.find((p) => p.type === 'day')?.value || '';
+      return `${year}-${month}-${day}`;
+    } catch {
+      return new Date(timestampMs).toISOString().slice(0, 10);
+    }
+  }
+
   function getUserUsage() {
     const emailKey = (session?.email || 'guest').toLowerCase();
-    if (!usageMap[emailKey]) {
+    const todayKey = getDailyDayKey(Date.now());
+    const existing = usageMap[emailKey];
+    if (!existing) {
       usageMap[emailKey] = {
         questionsUsed: 0,
         passExpiresAt: 0,
         lastCheckoutId: '',
+        dayKey: todayKey,
       };
+      return usageMap[emailKey];
     }
-    return usageMap[emailKey];
+    if (existing.dayKey && existing.dayKey !== todayKey) {
+      existing.questionsUsed = 0;
+      existing.dayKey = todayKey;
+      saveUsageMap();
+    } else if (!existing.dayKey) {
+      existing.dayKey = todayKey;
+    }
+    return existing;
   }
 
   function applyServerUsage(email, questionsUsed, passExpiresAt) {
     const emailKey = String(email || session?.email || 'guest').toLowerCase();
+    const todayKey = getDailyDayKey(Date.now());
     if (!usageMap[emailKey]) {
       usageMap[emailKey] = {
         questionsUsed: 0,
         passExpiresAt: 0,
         lastCheckoutId: '',
+        dayKey: todayKey,
       };
     }
     const current = usageMap[emailKey];
@@ -215,6 +248,7 @@
       ...current,
       questionsUsed: typeof questionsUsed === 'number' ? questionsUsed : current.questionsUsed,
       passExpiresAt: typeof passExpiresAt === 'number' ? passExpiresAt : current.passExpiresAt,
+      dayKey: todayKey,
     };
     saveUsageMap();
   }
@@ -258,6 +292,7 @@
   function activate24hPass(checkoutId = '') {
     const usage = getUserUsage();
     usage.passExpiresAt = Date.now() + PASS_DURATION_MS;
+    usage.dayKey = getDailyDayKey(Date.now());
     if (checkoutId) usage.lastCheckoutId = checkoutId;
     saveUsageMap();
   }
