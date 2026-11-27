@@ -1,5 +1,5 @@
 const FREE_QUESTION_LIMIT = 5;
-const FREE_WINDOW_MS = 24 * 60 * 60 * 1000;
+const DAILY_TIME_ZONE = 'Africa/Nairobi';
 const PRIMARY_GEMINI_URL =
   'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent';
 const FALLBACK_GEMINI_URL =
@@ -34,27 +34,86 @@ async function supabaseRequest(path, options = {}) {
   return data;
 }
 
-function isFreeWindowExpired(windowStartIso, nowMs) {
-  if (!windowStartIso) return false;
-  const startedMs = new Date(windowStartIso).getTime();
-  if (!Number.isFinite(startedMs)) return false;
-  return nowMs - startedMs >= FREE_WINDOW_MS;
+function getDailyDayKey(timestampMs) {
+  const dateObj = new Date(timestampMs);
+  if (!Number.isFinite(dateObj.getTime())) return '';
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: DAILY_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(dateObj);
+  const year = parts.find((p) => p.type === 'year')?.value || '';
+  const month = parts.find((p) => p.type === 'month')?.value || '';
+  const day = parts.find((p) => p.type === 'day')?.value || '';
+  return `${year}-${month}-${day}`;
 }
 
-function getEffectiveWindowUsage(row, nowMs) {
+function isDailyFreeExpired(row, todayKey) {
   const rawUsed = Number(row?.questions_used || 0);
-  if (isFreeWindowExpired(row?.free_window_started_at, nowMs)) {
+  if (rawUsed <= 0) return false;
+  const updatedMs = row?.updated_at ? new Date(row.updated_at).getTime() : NaN;
+  const windowStartMs = row?.free_window_started_at
+    ? new Date(row.free_window_started_at).getTime()
+    : NaN;
+  const referenceMs = Number.isFinite(updatedMs) ? updatedMs : windowStartMs;
+  if (!Number.isFinite(referenceMs)) return true;
+  return getDailyDayKey(referenceMs) !== todayKey;
+}
+
+function getEffectiveDailyUsage(row, todayKey) {
+  const rawUsed = Number(row?.questions_used || 0);
+  if (isDailyFreeExpired(row, todayKey)) {
     return 0;
   }
   return rawUsed;
 }
 
-function buildSystemInstruction(unit) {
+function buildAdaptationInstruction(promptText = '') {
+  const cleanPrompt = String(promptText || '').trim();
+  const wantsStatementOnly =
+    /\b(only (a |the )?statement|just (a |the )?statement|state only|give me (the |a )?statement|statement only|in one line|one sentence|short answer only|final answer only|just the answer|only the answer)\b/i.test(
+      cleanPrompt
+    );
+
+  if (wantsStatementOnly) {
+    return [
+      'RESPONSE MODE: STATEMENT-ONLY.',
+      'The student asked only for a statement or direct answer.',
+      'Output ONLY the exact requested statement(s) clearly and concisely.',
+      'Do NOT add introductory greetings, extra commentary, multi-step derivations, or long explanations unless explicitly asked.',
+    ].join(' ');
+  }
+
+  const isShortLookup =
+    cleanPrompt.length > 0 &&
+    cleanPrompt.length <= 45 &&
+    !/\b(explain|how|why|compare|debug|write|derive|walk me through|calculate|solve)\b/i.test(
+      cleanPrompt
+    );
+
+  if (isShortLookup) {
+    return [
+      'RESPONSE MODE: ADAPTIVE CONCISE.',
+      'Automatically adapt to the student’s concise request without manual settings.',
+      'Give a clear, direct answer first and keep formatting brief unless deeper explanation is clearly needed.',
+    ].join(' ');
+  }
+
+  return [
+    'RESPONSE MODE: ADAPTIVE FULL.',
+    'Automatically adapt to the student’s need without manual settings.',
+    'Provide clear, accurate coursework guidance tailored to the student’s unit, keeping structure clean and avoiding unnecessary filler.',
+    'When writing mathematical expressions, use clean LaTeX delimiters ($...$ for inline and $$...$$ for display math).',
+  ].join(' ');
+}
+
+function buildSystemInstruction(unit, promptText = '') {
   const cleanUnit = String(unit || 'General University Studies').trim();
   return [
     `You are Matrix AI, a helpful university study assistant for ${cleanUnit}.`,
-    'Explain concepts clearly, step-by-step, with accurate formulas, definitions, and examples suited to university coursework.',
-    'Keep responses well-structured and easy to follow.',
+    'Tailor formulas, definitions, code, and examples to university coursework.',
+    buildAdaptationInstruction(promptText),
   ].join(' ');
 }
 
@@ -140,20 +199,21 @@ export default async function handler(req, res) {
 
     const nowMs = Date.now();
     const nowIso = new Date(nowMs).toISOString();
+    const todayKey = getDailyDayKey(nowMs);
     const passExpiresAtMs = student.pass_expires_at ? new Date(student.pass_expires_at).getTime() : 0;
     const hasActivePass = Number.isFinite(passExpiresAtMs) && passExpiresAtMs > nowMs;
 
-    // 2. Check if this student's 24-hour free window expired
-    const windowExpired = isFreeWindowExpired(student.free_window_started_at, nowMs);
-    let studentQuestionsUsed = windowExpired ? 0 : Number(student.questions_used || 0);
-    let windowStartIso =
-      windowExpired || !student.free_window_started_at ? nowIso : student.free_window_started_at;
+    // 2. Daily reset (no rollover of unused free questions from prior days)
+    const dailyExpired = isDailyFreeExpired(student, todayKey);
+    const studentQuestionsUsed = dailyExpired ? 0 : Number(student.questions_used || 0);
+    const windowStartIso =
+      dailyExpired || !student.free_window_started_at ? nowIso : student.free_window_started_at;
     let deviceQuestionsUsed = 0;
 
-    // 3. Check all accounts tied to this device_id within their active 24h window
+    // 3. Check all accounts tied to this device_id for today's daily usage
     if (!hasActivePass && deviceId) {
       const deviceRows = await supabaseRequest(
-        `students?device_id=eq.${encodeURIComponent(deviceId)}&select=email,questions_used,pass_expires_at,free_window_started_at`
+        `students?device_id=eq.${encodeURIComponent(deviceId)}&select=email,questions_used,pass_expires_at,free_window_started_at,updated_at`
       );
       if (Array.isArray(deviceRows) && deviceRows.length > 0) {
         const anyDevicePassActive = deviceRows.some((r) => {
@@ -162,7 +222,7 @@ export default async function handler(req, res) {
         });
         if (!anyDevicePassActive) {
           deviceQuestionsUsed = deviceRows.reduce(
-            (sum, r) => sum + getEffectiveWindowUsage(r, nowMs),
+            (sum, r) => sum + getEffectiveDailyUsage(r, todayKey),
             0
           );
         }
@@ -174,14 +234,14 @@ export default async function handler(req, res) {
       return res.status(402).json({
         code: 'FREE_LIMIT_REACHED',
         error:
-          'You have used all 5 free questions for today. Unlock a 24-hour pass for 10 KES or wait for your 24-hour daily reset.',
+          'You have used all 5 free questions for today. Unlock a 24-hour pass for 10 KES or wait for tomorrow’s automatic daily reset.',
         questionsUsed: effectiveQuestionsUsed,
         freeLimit: FREE_QUESTION_LIMIT,
         passExpiresAt: passExpiresAtMs || 0,
       });
     }
 
-    // 4. Build Gemini request payload and call primary model with one fallback on 429/503/timeout
+    // 4. Build Gemini request payload with automatic student adaptation
     const userParts = [];
     if (promptText) {
       userParts.push({ text: promptText });
@@ -197,7 +257,11 @@ export default async function handler(req, res) {
 
     const geminiPayload = {
       system_instruction: {
-        parts: [{ text: buildSystemInstruction(selectedUnit || student.selected_unit) }],
+        parts: [
+          {
+            text: buildSystemInstruction(selectedUnit || student.selected_unit, promptText),
+          },
+        ],
       },
       contents: [
         {
@@ -228,11 +292,11 @@ export default async function handler(req, res) {
       return res.status(502).json({ error: 'Received an empty response from Matrix AI.' });
     }
 
-    // 5. Update daily free counter and 24-hour free window start in Supabase
+    // 5. Update today's free counter in Supabase (resetting to 1 on a new day, never rolling over)
     const nextStudentQuestionsUsed = hasActivePass ? studentQuestionsUsed : studentQuestionsUsed + 1;
     const patchPayload = {
       questions_used: nextStudentQuestionsUsed,
-      free_window_started_at: windowStartIso,
+      free_window_started_at: dailyExpired ? nowIso : windowStartIso,
       updated_at: nowIso,
     };
     if (deviceId && !student.device_id) {
