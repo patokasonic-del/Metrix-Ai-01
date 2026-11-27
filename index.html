@@ -4,12 +4,33 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Matrix AI — Student Portal & Study Assistant</title>
+
   <!-- Google Fonts: Inter & JetBrains Mono -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
   <!-- Font Awesome Icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
+
+  <!-- MathJax v3 for LaTeX Math Rendering -->
+  <script>
+    window.MathJax = {
+      tex: {
+        inlineMath: [['$', '$'], ['\\(', '\\)']],
+        displayMath: [['$$', '$$'], ['\\[', '\\]']],
+        processEscapes: true
+      },
+      options: {
+        skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+      },
+      startup: {
+        typeset: false
+      }
+    };
+  </script>
+  <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
   <style>
     :root {
       /* Dark Futuristic Palette (#030712 + Cyan / Electric Blue) */
@@ -427,6 +448,7 @@
       backdrop-filter: blur(3px);
       z-index: 90;
     }
+
     .sidebar-overlay.active {
       display: block;
     }
@@ -963,11 +985,13 @@
       color: var(--text-primary);
       line-height: 1.3;
     }
+
     .assistant-bubble h1:first-child,
     .assistant-bubble h2:first-child,
     .assistant-bubble h3:first-child {
       margin-top: 0;
     }
+
     .assistant-bubble h1 { font-size: 1.25rem; }
     .assistant-bubble h2 { font-size: 1.12rem; }
     .assistant-bubble h3 { font-size: 1.02rem; }
@@ -975,6 +999,7 @@
     .assistant-bubble p {
       margin-bottom: 10px;
     }
+
     .assistant-bubble p:last-child {
       margin-bottom: 0;
     }
@@ -1554,13 +1579,16 @@
       width: 6px;
       height: 6px;
     }
+
     ::-webkit-scrollbar-track {
       background: transparent;
     }
+
     ::-webkit-scrollbar-thumb {
       background: rgba(148, 163, 184, 0.35);
       border-radius: 999px;
     }
+
     ::-webkit-scrollbar-thumb:hover {
       background: rgba(148, 163, 184, 0.55);
     }
@@ -1800,12 +1828,10 @@
           <button class="mobile-menu-btn" id="mobileMenuBtn" type="button" aria-label="Open menu">
             <i class="fa-solid fa-bars"></i>
           </button>
-
           <div class="avatar-wrapper topbar-avatar">
             <img src="avatar.png" alt="Matrix AI" onerror="this.parentElement.classList.add('img-failed')" />
             <div class="avatar-fallback">M</div>
           </div>
-
           <div class="brand-info">
             <h1 class="brand-name">Matrix AI</h1>
             <span class="status-badge">
@@ -1820,7 +1846,6 @@
             <i class="fa-solid fa-volume-xmark" id="voiceReplyIcon"></i>
             <span><span class="voice-label-prefix">Voice Reply: </span><strong id="voiceReplyStateText">Off</strong></span>
           </button>
-
           <span class="active-unit-pill" id="activeUnitBadge">
             <i class="fa-solid fa-book-open"></i>
             <span id="activeUnitText">Computer Programming</span>
@@ -1840,7 +1865,6 @@
               <img src="avatar.png" alt="Matrix AI" onerror="this.parentElement.classList.add('img-failed')" />
               <div class="avatar-fallback">M</div>
             </div>
-
             <h2 class="welcome-title">Welcome to <span>Matrix AI</span></h2>
             <p class="welcome-subtitle" id="welcomeSubtitle">
               Welcome to Matrix AI! What can I help you with today?
@@ -1902,19 +1926,8 @@
           </div>
 
           <!-- Hidden File Inputs for Gallery/Files & Camera -->
-          <input
-            type="file"
-            id="galleryFileInput"
-            accept="image/jpeg,image/png,image/webp"
-            class="hidden"
-          />
-          <input
-            type="file"
-            id="cameraFileInput"
-            accept="image/jpeg,image/png,image/webp"
-            capture="environment"
-            class="hidden"
-          />
+          <input type="file" id="galleryFileInput" accept="image/jpeg,image/png,image/webp" class="hidden" />
+          <input type="file" id="cameraFileInput" accept="image/jpeg,image/png,image/webp" capture="environment" class="hidden" />
 
           <div class="input-wrapper">
             <!-- Photo Upload / Camera Menu Trigger -->
@@ -1962,6 +1975,7 @@
               <i class="fa-solid fa-arrow-up"></i>
             </button>
           </div>
+
           <p class="disclaimer-note">Matrix AI can make mistakes.</p>
         </div>
       </div>
@@ -2011,6 +2025,7 @@
             <i class="fa-solid fa-lock-open"></i>
             <span>Pay 10 KES for 24h Access</span>
           </button>
+
           <button type="button" class="secondary-btn" id="verifyPaymentBtn">
             <i class="fa-solid fa-rotate"></i>
             <span>I Have Paid — Verify Payment</span>
