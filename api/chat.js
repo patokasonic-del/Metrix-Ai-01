@@ -69,7 +69,7 @@ function getEffectiveDailyUsage(row, todayKey) {
   return rawUsed;
 }
 
-function buildAdaptationInstruction(promptText = '') {
+function buildAdaptationInstruction(promptText = '', hasImage = false) {
   const cleanPrompt = String(promptText || '').trim();
   const wantsStatementOnly =
     /\b(only (a |the )?statement|just (a |the )?statement|state only|give me (the |a )?statement|statement only|in one line|one sentence|short answer only|final answer only|just the answer|only the answer)\b/i.test(
@@ -79,13 +79,28 @@ function buildAdaptationInstruction(promptText = '') {
   if (wantsStatementOnly) {
     return [
       'RESPONSE MODE: STATEMENT-ONLY.',
-      'The student asked only for a statement or direct answer.',
+      'The student requested ONLY a statement or direct answer.',
       'Output ONLY the exact requested statement(s) clearly and concisely.',
-      'Do NOT add introductory greetings, extra commentary, multi-step derivations, or long explanations unless explicitly asked.',
+      'Do NOT include introductory greetings, extra commentary, multi-step derivations, or long explanations unless explicitly asked.',
+    ].join(' ');
+  }
+
+  const isStudentIdea =
+    /\b(my idea|i have an idea|idea is|thinking of building|thinking of making|what if i|concept is|propose|proposal|project idea)\b/i.test(
+      cleanPrompt
+    );
+
+  if (isStudentIdea) {
+    return [
+      'RESPONSE MODE: STUDENT-IDEA ADAPTIVE.',
+      'Adapt first to the student’s own idea and build around their concept rather than replacing it with a generic template.',
+      'Acknowledge and sharpen their core idea first, show how it fits their coursework or practical goal, point out key edge cases or improvements constructively, and keep next steps clear without unnecessary fluff.',
+      'Use clean LaTeX delimiters ($...$ for inline and $$...$$ for display math) whenever math expressions appear.',
     ].join(' ');
   }
 
   const isShortLookup =
+    !hasImage &&
     cleanPrompt.length > 0 &&
     cleanPrompt.length <= 45 &&
     !/\b(explain|how|why|compare|debug|write|derive|walk me through|calculate|solve)\b/i.test(
@@ -97,23 +112,25 @@ function buildAdaptationInstruction(promptText = '') {
       'RESPONSE MODE: ADAPTIVE CONCISE.',
       'Automatically adapt to the student’s concise request without manual settings.',
       'Give a clear, direct answer first and keep formatting brief unless deeper explanation is clearly needed.',
+      'Use clean LaTeX delimiters ($...$ for inline and $$...$$ for display math) when showing math.',
     ].join(' ');
   }
 
   return [
     'RESPONSE MODE: ADAPTIVE FULL.',
-    'Automatically adapt to the student’s need without manual settings.',
-    'Provide clear, accurate coursework guidance tailored to the student’s unit, keeping structure clean and avoiding unnecessary filler.',
+    'Automatically adapt to the student’s need and idea without manual settings.',
+    'Provide clear, accurate coursework guidance tailored to the student’s unit, keeping structure focused and free of unnecessary filler.',
     'When writing mathematical expressions, use clean LaTeX delimiters ($...$ for inline and $$...$$ for display math).',
   ].join(' ');
 }
 
-function buildSystemInstruction(unit, promptText = '') {
+function buildSystemInstruction(unit, promptText = '', hasImage = false) {
   const cleanUnit = String(unit || 'General University Studies').trim();
   return [
     `You are Matrix AI, a helpful university study assistant for ${cleanUnit}.`,
+    'Adapt naturally to each student’s idea, level, and requested depth without requiring manual setup.',
     'Tailor formulas, definitions, code, and examples to university coursework.',
-    buildAdaptationInstruction(promptText),
+    buildAdaptationInstruction(promptText, hasImage),
   ].join(' ');
 }
 
@@ -241,7 +258,7 @@ export default async function handler(req, res) {
       });
     }
 
-    // 4. Build Gemini request payload with automatic student adaptation
+    // 4. Build Gemini request payload with automatic student-idea & depth adaptation
     const userParts = [];
     if (promptText) {
       userParts.push({ text: promptText });
@@ -259,7 +276,11 @@ export default async function handler(req, res) {
       system_instruction: {
         parts: [
           {
-            text: buildSystemInstruction(selectedUnit || student.selected_unit, promptText),
+            text: buildSystemInstruction(
+              selectedUnit || student.selected_unit,
+              promptText,
+              Boolean(imageBase64)
+            ),
           },
         ],
       },
