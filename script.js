@@ -475,6 +475,10 @@
     return String(rawText || '')
       .replace(/```svg[\s\S]*?```/gi, 'Technical diagram shown on screen.')
       .replace(/```[\s\S]*?```/g, 'Code example shown on screen.')
+      .replace(/\$\$[\s\S]*?\$\$/g, ' math expression ')
+      .replace(/\\\[[\s\S]*?\\\]/g, ' math expression ')
+      .replace(/\\\([\s\S]*?\\\)/g, ' math expression ')
+      .replace(/\$([^$\n]+)\$/g, '$1')
       .replace(/`([^`]+)`/g, '$1')
       .replace(/\*\*([^*]+)\*\*/g, '$1')
       .replace(/\*([^*]+)\*/g, '$1')
@@ -772,7 +776,7 @@
     return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
   }
 
-  // --- Safe HTML Escaping & SVG Sanitizer ---
+  // --- Safe HTML Escaping, Math Protection & SVG Sanitizer ---
   function escapeHtml(str) {
     return String(str)
       .replace(/&/g, '&amp;')
@@ -828,6 +832,7 @@
   function renderMarkdown(rawText) {
     const codeBlocks = [];
     const svgBlocks = [];
+    const mathBlocks = [];
 
     let processed = String(rawText).replace(/```svg\s*\n([\s\S]*?)```/gi, (_, svgContent) => {
       const cleanSvg = sanitizeSvg(svgContent.trim());
@@ -849,6 +854,21 @@
       });
       return `@@CODEBLOCK_${index}@@`;
     });
+
+    // Extract display and inline LaTeX math before markdown/HTML processing
+    const stashMath = (match) => {
+      const idx = mathBlocks.length;
+      mathBlocks.push(match);
+      return `@@MATHBLOCK_${idx}@@`;
+    };
+
+    processed = processed.replace(/\$\$[\s\S]+?\$\$/g, stashMath);
+    processed = processed.replace(/\\\[[\s\S]+?\\\]/g, stashMath);
+    processed = processed.replace(/\\\([\s\S]+?\\\)/g, stashMath);
+    processed = processed.replace(/(?<!\$)\$(?!\$)([^\n$]+?)\$(?!\$)/g, stashMath);
+
+    const restoreMath = (htmlStr) =>
+      htmlStr.replace(/@@MATHBLOCK_(\d+)@@/g, (_, idx) => mathBlocks[Number(idx)] ?? '');
 
     const lines = processed.split('\n');
     const output = [];
@@ -916,7 +936,7 @@
       if (headingMatch) {
         closeLists();
         const level = headingMatch[1].length;
-        const content = formatInlineMarkdown(escapeHtml(headingMatch[2]));
+        const content = restoreMath(formatInlineMarkdown(escapeHtml(headingMatch[2])));
         output.push(`<h${level}>${content}</h${level}>`);
         continue;
       }
@@ -931,7 +951,7 @@
           output.push('<ul>');
           inUl = true;
         }
-        output.push(`<li>${formatInlineMarkdown(escapeHtml(ulMatch[1]))}</li>`);
+        output.push(`<li>${restoreMath(formatInlineMarkdown(escapeHtml(ulMatch[1])))}</li>`);
         continue;
       }
 
@@ -945,12 +965,12 @@
           output.push('<ol>');
           inOl = true;
         }
-        output.push(`<li>${formatInlineMarkdown(escapeHtml(olMatch[1]))}</li>`);
+        output.push(`<li>${restoreMath(formatInlineMarkdown(escapeHtml(olMatch[1])))}</li>`);
         continue;
       }
 
       closeLists();
-      output.push(`<p>${formatInlineMarkdown(escapeHtml(line))}</p>`);
+      output.push(`<p>${restoreMath(formatInlineMarkdown(escapeHtml(line)))}</p>`);
     }
 
     closeLists();
@@ -971,6 +991,20 @@
     });
 
     return container;
+  }
+
+  function typesetMath(targetEl) {
+    if (!targetEl) return;
+    const runTypeset = () => {
+      if (window.MathJax && typeof window.MathJax.typesetPromise === 'function') {
+        window.MathJax.typesetPromise([targetEl]).catch(() => {});
+      }
+    };
+    if (window.MathJax && typeof window.MathJax.typesetPromise === 'function') {
+      runTypeset();
+    } else {
+      window.addEventListener('load', runTypeset, { once: true });
+    }
   }
 
   function copyText(text, onSuccess) {
@@ -1077,6 +1111,7 @@
     chat.messages.forEach((msg, idx) => {
       appendMessageToDOM(msg, idx);
     });
+    typesetMath(messagesList);
     scrollToBottom();
   }
 
@@ -1183,6 +1218,9 @@
     }
 
     messagesList.appendChild(row);
+    if (msg.role !== 'user') {
+      typesetMath(row);
+    }
   }
 
   function updateMessageFeedback(msgIndex, feedback) {
